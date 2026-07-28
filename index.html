@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>Schichtübergabe Feinzug 2</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Schichtübergabe">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#2c3e50">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header id="kopf">
+  <h1 id="kopf-titel">Maschinen</h1>
+</header>
+
+<main id="inhalt"><!-- wird per JS gefüllt --></main>
+
+<nav id="tabs">
+  <button class="tab" data-view="maschinen"><span class="tab-ico">▦</span>Maschinen</button>
+  <button class="tab" data-view="aufgaben"><span class="tab-ico">✓</span>Aufgaben</button>
+  <button class="tab" data-view="spulen"><span class="tab-ico">↻</span>Spulen</button>
+  <button class="tab" data-view="mehr"><span class="tab-ico">≡</span>Mehr</button>
+</nav>
+
+<script src="app.js"></script>
+</body>
+</html>
