@@ -1,5 +1,7 @@
 "use strict";
 
+const APP_VERSION = "1.2";
+
 /* ---------- Feste Vorgaben (nicht ohne Rücksprache ändern) ---------- */
 const MASCHINEN = ["Z49", "Z67", "Z68", "Z78", "Z82", "Z83"];
 const STATUS = {
@@ -40,8 +42,30 @@ function flash(text) {
   document.body.appendChild(el); setTimeout(() => el.remove(), 2200);
 }
 
+/* ---------- Fehler automatisch erfassen ---------- */
+function logFehler(art, nachricht, extra) {
+  try {
+    const list = DB.get("fehler", []);
+    list.push({
+      zeit: jetzt(), art: art,
+      nachricht: String(nachricht == null ? "" : nachricht).slice(0, 500),
+      extra: extra ? String(extra).slice(0, 1500) : "",
+      ansicht: (typeof state !== "undefined" && state) ? state.view : "?",
+    });
+    while (list.length > 40) list.shift();
+    DB.set("fehler", list);
+    aktualisiereFehlerBadge();
+  } catch (e) { /* Fehler-Logger darf selbst nie crashen */ }
+}
+function aktualisiereFehlerBadge() {
+  const k = document.getElementById("fehler-knopf");
+  if (k) k.classList.toggle("hat-fehler", DB.get("fehler", []).length > 0);
+}
+window.addEventListener("error", e => logFehler("Programmfehler", e.message, (e.filename || "") + ":" + (e.lineno || "") + (e.error && e.error.stack ? "\n" + e.error.stack : "")));
+window.addEventListener("unhandledrejection", e => logFehler("Programmfehler", (e.reason && e.reason.message) || e.reason, e.reason && e.reason.stack));
+
 /* ---------- Router ---------- */
-const state = { view: "maschinen", maschine: null };
+const state = { view: "maschinen", maschine: null, overlay: null };
 const inhalt = document.getElementById("inhalt");
 const titel = document.getElementById("kopf-titel");
 
@@ -52,6 +76,7 @@ function zeige(view) {
   window.scrollTo(0, 0);
 }
 function render() {
+  if (state.overlay === "fehler") return renderFehler();
   if (state.view === "maschinen" && state.maschine) return renderMaschineDetail();
   ({ maschinen: renderMaschinen, aufgaben: renderAufgaben, spulen: renderSpulen, mehr: renderMehr }[state.view] || renderMaschinen)();
 }
@@ -297,12 +322,83 @@ function importData() {
   r.readAsText(f);
 }
 
+/* ---------- Fehler melden ---------- */
+function renderFehler() {
+  titel.textContent = "Fehler melden";
+  const fehler = DB.get("fehler", []);
+  const auto = fehler.length
+    ? fehler.slice().reverse().map(f => `<div class="eintrag"><b>${esc(f.art)}:</b> ${esc(f.nachricht)}<div class="meta">${f.zeit} · Ansicht „${esc(f.ansicht)}"</div></div>`).join("")
+    : `<div class="leer">Bisher kein automatischer Fehler erfasst. 👍</div>`;
+  inhalt.innerHTML = `
+    <button class="btn btn-grau btn-klein" data-fehler-zurueck="1">‹ Zurück</button>
+    <div class="karte" style="margin-top:12px">
+      <h2>Fehler beschreiben</h2>
+      <p class="hinweis" style="margin-top:0">Was ist passiert? Was hast du gedrückt, was war falsch?</p>
+      <textarea id="f-text" placeholder="z. B. Endgewicht war falsch, nachdem ich VZ 3 gelöscht habe"></textarea>
+      <div class="label">Foto anhängen (optional)</div>
+      <input type="file" id="f-foto" accept="image/*">
+      <button class="btn" data-fehler-senden="1" style="margin-top:12px">Fehlerbericht erstellen &amp; teilen</button>
+      <p class="hinweis">Es entsteht eine Datei. Schick sie per Teilen (Mail, AirDrop, in „Dateien" speichern) – die kann ich dann auslesen.</p>
+    </div>
+    <div class="karte">
+      <h2>Automatisch erfasste Fehler</h2>${auto}
+      ${fehler.length ? '<button class="btn btn-grau btn-klein" data-fehler-loeschen="1" style="margin-top:10px">Liste leeren</button>' : ""}
+    </div>`;
+}
+
+function verkleinereFoto(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const max = 1200; let w = img.width, h = img.height;
+      if (w > max || h > max) { const s = max / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
+      const c = document.createElement("canvas"); c.width = w; c.height = h;
+      c.getContext("2d").drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      try { resolve(c.toDataURL("image/jpeg", 0.7)); } catch (e) { reject(e); }
+    };
+    img.onerror = reject; img.src = url;
+  });
+}
+
+async function sendeFehlerbericht() {
+  const text = document.getElementById("f-text").value.trim();
+  const fInput = document.getElementById("f-foto");
+  let foto = null;
+  if (fInput.files && fInput.files[0]) {
+    try { foto = await verkleinereFoto(fInput.files[0]); } catch (e) { flash("Foto konnte nicht gelesen werden – Bericht ohne Foto."); }
+  }
+  const bericht = {
+    typ: "fehlerbericht", app: "fz2-tool", version: APP_VERSION, zeit: jetzt(),
+    beschreibung: text,
+    geraet: {
+      ua: navigator.userAgent, plattform: navigator.platform || "",
+      screen: (typeof screen !== "undefined" ? screen.width + "x" + screen.height : ""),
+      standalone: !!(navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches)),
+      sprache: navigator.language,
+    },
+    auto_fehler: DB.get("fehler", []),
+    daten_umfang: { maschinen_eintraege: entries().length, aufgaben: todos().length, spulen: spulen().length },
+    foto: foto,
+  };
+  const blob = new Blob([JSON.stringify(bericht, null, 2)], { type: "application/json" });
+  const name = "fehlerbericht-" + jetzt().replace(/[.: ]/g, "-") + ".json";
+  const file = new File([blob], name, { type: "application/json" });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: "Fehlerbericht fz2-tool" }); }
+    catch (e) { /* Nutzer hat Teilen abgebrochen */ }
+  } else {
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); flash("Fehlerbericht gespeichert.");
+  }
+}
+
 /* ---------- Ereignisse (Delegation) ---------- */
 document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-save-spule],[data-del-spule],[data-g-uebernehmen],[data-export],[data-import]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-save-spule],[data-del-spule],[data-g-uebernehmen],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-loeschen]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -316,7 +412,11 @@ document.addEventListener("click", e => {
   else if (el.dataset.gUebernehmen) { const g = gErmittelt(); if (g > 0) { document.getElementById("sp-g").value = fmt(g, 4); spRechne(); flash("G übernommen: " + fmt(g, 4) + " kg/km"); } else flash("Erst Gewicht und Länge der Spule eingeben."); }
   else if (el.dataset.export) exportData();
   else if (el.dataset.import) importData();
+  else if (el.dataset.fehlerZurueck) { state.overlay = null; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.fehlerSenden) sendeFehlerbericht();
+  else if (el.dataset.fehlerLoeschen) { if (confirm("Fehlerliste leeren?")) { DB.set("fehler", []); aktualisiereFehlerBadge(); render(); } }
 });
+document.getElementById("fehler-knopf").addEventListener("click", () => { state.overlay = "fehler"; render(); window.scrollTo(0, 0); });
 document.addEventListener("input", e => { if (e.target.closest("#inhalt") && state.view === "spulen") spRechne(); });
 
 function gewaehlterStatus() { const a = document.querySelector(".status-opt.aktiv"); return a ? a.dataset.status : null; }
@@ -350,3 +450,4 @@ if ("serviceWorker" in navigator) {
 
 /* ---------- Start ---------- */
 zeige("maschinen");
+aktualisiereFehlerBadge();
