@@ -152,6 +152,16 @@ function renderSpulen() {
       <div class="hinweis" id="sp-g-hint"></div>
     </div>
     <div class="karte">
+      <h2>G aus vorhandener Spule ermitteln</h2>
+      <div class="hinweis" style="margin-top:0">Kennst du das Metergewicht nicht? Gewicht und Länge einer fertigen Spule eingeben – G wird berechnet und kann oben übernommen werden.</div>
+      <div class="zwei">
+        <div><div class="label">Gewicht der Spule (kg)</div><input type="text" id="g-kg" class="num" inputmode="decimal" placeholder="kg"></div>
+        <div><div class="label">Länge der Spule (m)</div><input type="text" id="g-m" class="num" inputmode="decimal" placeholder="m"></div>
+      </div>
+      <div class="zeile" style="margin-top:6px"><span>Metergewicht G</span><span><span class="w" id="g-out">–</span><span class="einheit">kg/km</span></span></div>
+      <button class="btn btn-grau" data-g-uebernehmen="1" style="margin-top:8px">Als Metergewicht G übernehmen</button>
+    </div>
+    <div class="karte">
       <h2>Vorzüge – Gewicht je Spule (kg)</h2>
       <div class="vz-grid">${vzFelder}</div>
       <div class="hinweis">Nur ausgefüllte Felder zählen – bei 6 Vorzügen einfach 2 leer lassen.</div>
@@ -209,7 +219,11 @@ function spRechne() {
   const uKg = spVal("u-kg"), uM = spVal("u-m");
   document.getElementById("u-kg-out").textContent = G > 0 ? fmt(uKg / G * 1000, 0) : "–";
   document.getElementById("u-m-out").textContent = G > 0 ? fmt(uM / 1000 * G) : "–";
+  // G aus vorhandener Spule: G = Gewicht(kg) / Länge(km) = kg / (m/1000)
+  const gKg = spVal("g-kg"), gM = spVal("g-m");
+  document.getElementById("g-out").textContent = (gKg > 0 && gM > 0) ? fmt(gKg / (gM / 1000), 4) : "–";
 }
+function gErmittelt() { const gKg = spVal("g-kg"), gM = spVal("g-m"); return (gKg > 0 && gM > 0) ? gKg / (gM / 1000) : 0; }
 
 function speichereSpule() {
   const G = spVal("sp-g"), faktor = spVal("sp-faktor");
@@ -288,7 +302,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-save-spule],[data-del-spule],[data-export],[data-import]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-save-spule],[data-del-spule],[data-g-uebernehmen],[data-export],[data-import]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -299,6 +313,7 @@ document.addEventListener("click", e => {
   else if (el.dataset.delTodo) delTodo(el.dataset.delTodo);
   else if (el.dataset.saveSpule) speichereSpule();
   else if (el.dataset.delSpule) delSpule(el.dataset.delSpule);
+  else if (el.dataset.gUebernehmen) { const g = gErmittelt(); if (g > 0) { document.getElementById("sp-g").value = fmt(g, 4); spRechne(); flash("G übernommen: " + fmt(g, 4) + " kg/km"); } else flash("Erst Gewicht und Länge der Spule eingeben."); }
   else if (el.dataset.export) exportData();
   else if (el.dataset.import) importData();
 });
