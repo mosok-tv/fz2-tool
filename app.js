@@ -66,6 +66,7 @@ window.addEventListener("unhandledrejection", e => logFehler("Programmfehler", (
 
 /* ---------- Router ---------- */
 const state = { view: "maschinen", maschine: null, overlay: null };
+let spModus = "summe";  // Berechnungsart der Vorzüge: "summe" | "kleinster"
 const inhalt = document.getElementById("inhalt");
 const titel = document.getElementById("kopf-titel");
 
@@ -159,7 +160,7 @@ function renderSpulen() {
   const liste = spulen().slice().reverse().map(e => `
     <div class="eintrag">
       <div><b>${e.auftrag ? "Auftrag " + esc(e.auftrag) : "(ohne Auftragsnummer)"}</b></div>
-      <div style="font-size:.92rem">${e.anzahl_vz} VZ = <b>${fmt(e.gesamtmasse)} kg</b> · Faktor ${fmt(e.faktor, 0)} %
+      <div style="font-size:.92rem">${e.anzahl_vz} VZ ${e.modus === "kleinster" ? "(vom kleinsten)" : "(zusammen)"} = <b>${fmt(e.gesamtmasse)} kg</b> · Faktor ${fmt(e.faktor, 0)} %
         → Endgewicht <b>${fmt(e.endgewicht)} kg</b> / <b>${fmt(e.endlaenge_m, 0)} m</b><br>
         ${e.anzahl_spulen} Fertigspulen → je <b>${fmt(e.gewicht_je_spule)} kg</b> / <b>${fmt(e.laenge_je_spule, 0)} m</b>
         ${e.geschwindigkeit ? "<br>Bei " + fmt(e.geschwindigkeit, 1) + " m/s → Laufzeit gesamt <b>" + hm(e.endlaenge_m / e.geschwindigkeit) + "</b> · je Spule <b>" + hm(e.laenge_je_spule / e.geschwindigkeit) + "</b>" : ""}
@@ -190,7 +191,19 @@ function renderSpulen() {
       <h2>Vorzüge – Gewicht je Spule (kg)</h2>
       <div class="vz-grid">${vzFelder}</div>
       <div class="hinweis">Nur ausgefüllte Felder zählen – bei 6 Vorzügen einfach 2 leer lassen.</div>
-      <div class="zeile" style="border-bottom:none;margin-top:8px"><span>Gesamtmasse <span id="sp-anzahl" style="color:var(--grau)"></span></span><span><span class="w" id="sp-summe">0</span><span class="einheit">kg</span></span></div>
+      <div class="zeile" style="border-bottom:none;margin-top:8px"><span>Summe der Vorzüge <span id="sp-anzahl" style="color:var(--grau)"></span></span><span><span class="w" id="sp-summe">0</span><span class="einheit">kg</span></span></div>
+    </div>
+    <div class="karte">
+      <h2>Berechnungsart der Vorzüge</h2>
+      <div class="modus">
+        <button type="button" data-modus="summe" class="${spModus === 'summe' ? 'aktiv' : ''}">Alle zusammen<small>Summe aller Vorzüge</small></button>
+        <button type="button" data-modus="kleinster" class="${spModus === 'kleinster' ? 'aktiv' : ''}">Vom kleinsten<small>kleinster × Anzahl</small></button>
+      </div>
+      <div class="vergleich">
+        <div id="v-summe">Alle zusammen<span class="gross" id="w-summe">0</span></div>
+        <div id="v-kleinster">Vom kleinsten<span class="gross" id="w-kleinster">0</span></div>
+      </div>
+      <div class="hinweis" id="modus-hinweis"></div>
     </div>
     <div class="karte">
       <div style="display:flex;gap:12px;align-items:flex-end">
@@ -229,11 +242,24 @@ function spVal(id) { return zahl(document.getElementById(id).value); }
 function spRechne() {
   const G = spVal("sp-g"), faktor = spVal("sp-faktor"), nSpulen = spVal("sp-nspulen"), v = spVal("sp-v");
   document.getElementById("sp-g-hint").textContent = G > 0 ? `1 km wiegt ${fmt(G, 4)} kg · 1 kg = ${fmt(1000 / G, 1)} m` : "Wert von der Prüfkarte eintragen (Spalte G, kg/km).";
-  let summe = 0, aktiv = 0;
-  document.querySelectorAll(".vz").forEach(el => { const w = zahl(el.value); if (w > 0) { summe += w; aktiv++; } });
+  const vzWerte = [];
+  document.querySelectorAll(".vz").forEach(el => { const w = zahl(el.value); if (w > 0) vzWerte.push(w); });
+  const aktiv = vzWerte.length;
+  const summe = vzWerte.reduce((a, b) => a + b, 0);
+  const kleinster = aktiv ? Math.min(...vzWerte) : 0;
+  const massKleinster = kleinster * aktiv;
   document.getElementById("sp-summe").textContent = fmt(summe);
   document.getElementById("sp-anzahl").textContent = aktiv ? `(${aktiv} aktiv)` : "";
-  const eg = summe * (faktor / 100), el = G > 0 ? eg / G * 1000 : 0;
+  // Vergleich der beiden Berechnungsarten
+  document.getElementById("w-summe").textContent = fmt(summe);
+  document.getElementById("w-kleinster").textContent = fmt(massKleinster);
+  document.getElementById("v-summe").classList.toggle("benutzt", spModus === "summe");
+  document.getElementById("v-kleinster").classList.toggle("benutzt", spModus === "kleinster");
+  document.getElementById("modus-hinweis").textContent = spModus === "kleinster"
+    ? `Verwendet: kleinster Vorzug (${fmt(kleinster)} kg) × ${aktiv} = ${fmt(massKleinster)} kg. Rest bleibt übrig: ${fmt(summe - massKleinster)} kg.`
+    : `Verwendet: Summe aller ${aktiv} Vorzüge = ${fmt(summe)} kg.`;
+  const gesamt = spModus === "kleinster" ? massKleinster : summe;
+  const eg = gesamt * (faktor / 100), el = G > 0 ? eg / G * 1000 : 0;
   document.getElementById("sp-eg").textContent = fmt(eg);
   document.getElementById("sp-el").textContent = fmt(el, 0);
   const sKg = nSpulen > 0 ? eg / nSpulen : 0, sM = (nSpulen > 0 && G > 0) ? sKg / G * 1000 : 0;
@@ -259,10 +285,13 @@ function speichereSpule() {
   if (!vz.length) return flash("Mindestens ein Vorzug-Gewicht angeben.");
   if (faktor <= 0) return flash("Faktor muss größer als 0 sein.");
   if (nSpulen < 1) return flash("Anzahl Fertigspulen muss mindestens 1 sein.");
-  const summe = vz.reduce((a, b) => a + b, 0), eg = summe * faktor / 100;
+  const summe = vz.reduce((a, b) => a + b, 0);
+  const gesamt = spModus === "kleinster" ? Math.min(...vz) * vz.length : summe;
+  const eg = gesamt * faktor / 100;
   const eintrag = {
     id: neueId(), auftrag: document.getElementById("sp-auftrag").value.trim().slice(0, 50),
-    metergewicht: G, vz_gewichte: vz, anzahl_vz: vz.length, gesamtmasse: summe, faktor: faktor,
+    metergewicht: G, vz_gewichte: vz, anzahl_vz: vz.length, gesamtmasse: gesamt,
+    modus: spModus, summe_alle: summe, faktor: faktor,
     endgewicht: eg, endlaenge_m: eg / G * 1000, anzahl_spulen: nSpulen,
     gewicht_je_spule: eg / nSpulen, laenge_je_spule: eg / nSpulen / G * 1000,
     geschwindigkeit: v > 0 ? v : null, created_at: jetzt(),
@@ -398,7 +427,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-save-spule],[data-del-spule],[data-g-uebernehmen],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-loeschen]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-save-spule],[data-del-spule],[data-g-uebernehmen],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-loeschen]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -407,6 +436,11 @@ document.addEventListener("click", e => {
   else if (el.dataset.addTodo) addTodo();
   else if (el.dataset.toggleTodo) toggleTodo(el.dataset.toggleTodo);
   else if (el.dataset.delTodo) delTodo(el.dataset.delTodo);
+  else if (el.dataset.modus) {
+    spModus = el.dataset.modus;
+    document.querySelectorAll(".modus button").forEach(b => b.classList.toggle("aktiv", b === el));
+    spRechne();
+  }
   else if (el.dataset.saveSpule) speichereSpule();
   else if (el.dataset.delSpule) delSpule(el.dataset.delSpule);
   else if (el.dataset.gUebernehmen) { const g = gErmittelt(); if (g > 0) { document.getElementById("sp-g").value = fmt(g, 4); spRechne(); flash("G übernommen: " + fmt(g, 4) + " kg/km"); } else flash("Erst Gewicht und Länge der Spule eingeben."); }
