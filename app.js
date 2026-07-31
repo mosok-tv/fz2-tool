@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.3";
+const APP_VERSION = "1.4";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -539,12 +539,67 @@ function toggleTodo(id) {
 function delTodo(id) { if (!confirm("Aufgabe löschen?")) return; DB.set("todos", todos().filter(t => t.id !== id)); render(); }
 function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("spulen", spulen().filter(s => s.id !== id)); render(); }
 
-/* ---------- Service Worker (Offline) ---------- */
+/* ---------- Was ist neu (Änderungen je Version) ---------- */
+const CHANGELOG = {
+  "1.4": [
+    "Auto-Update: die App meldet selbst, wenn eine neue Version da ist",
+    "Übersicht der Neuerungen nach jedem Update",
+  ],
+  "1.3": [
+    "Vorzüge umschaltbar: alle zusammen oder vom kleinsten",
+    "Faktor darf leer bleiben (zählt dann als 100 %)",
+    "Gespeicherte Berechnungen bearbeiten und neu rechnen",
+    "Automatischer Wochenbericht, wenn Fehler aufgelaufen sind",
+  ],
+};
+
+function zeigeWasNeu() {
+  const gesehen = DB.get("version_gesehen", null);
+  if (gesehen === APP_VERSION) return;
+  const ersterStart = (gesehen === null);
+  DB.set("version_gesehen", APP_VERSION);
+  const neu = CHANGELOG[APP_VERSION];
+  if (ersterStart || !neu || !neu.length) return;  // beim allerersten Öffnen nichts zeigen
+  document.getElementById("update-titel").textContent = "Aktualisiert auf Version " + APP_VERSION;
+  document.getElementById("update-liste").innerHTML = neu.map(x => "<li>" + esc(x) + "</li>").join("");
+  document.getElementById("update-dialog").hidden = false;
+}
+document.getElementById("update-ok").addEventListener("click", () => {
+  document.getElementById("update-dialog").hidden = true;
+});
+
+/* ---------- Service Worker + Auto-Update ---------- */
+function zeigeUpdateBanner(reg) {
+  const b = document.getElementById("update-banner");
+  b.textContent = "● Neue Version verfügbar – zum Aktualisieren tippen";
+  b.classList.add("zeigen");
+  b.onclick = () => {
+    b.textContent = "Wird aktualisiert …";
+    if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
+  };
+}
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+  let neugeladen = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!neugeladen) { neugeladen = true; location.reload(); }  // neue Version aktiv -> neu laden
+  });
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").then(reg => {
+      if (reg.waiting && navigator.serviceWorker.controller) zeigeUpdateBanner(reg);
+      reg.addEventListener("updatefound", () => {
+        const neu = reg.installing;
+        if (neu) neu.addEventListener("statechange", () => {
+          if (neu.state === "installed" && navigator.serviceWorker.controller) zeigeUpdateBanner(reg);
+        });
+      });
+      // stündlich auf neue Version prüfen, solange die App offen ist
+      setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+    }).catch(() => {});
+  });
 }
 
 /* ---------- Start ---------- */
 zeige("maschinen");
 aktualisiereFehlerBadge();
 pruefeWochenbericht();
+zeigeWasNeu();

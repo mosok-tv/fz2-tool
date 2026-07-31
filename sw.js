@@ -1,12 +1,18 @@
 /* Service Worker – macht die App offline nutzbar. Version bei Änderungen erhöhen. */
-const CACHE = "schichtuebergabe-v5";
+const CACHE = "schichtuebergabe-v6";
 const DATEIEN = [
   "./", "index.html", "style.css", "app.js", "manifest.json",
   "icon-180.png", "icon-192.png", "icon-512.png",
 ];
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(DATEIEN)).then(() => self.skipWaiting()));
+  // Kein skipWaiting hier: die neue Version wartet, bis der Nutzer im Banner „Aktualisieren" tippt
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(DATEIEN)));
+});
+
+// Wird die App den wartenden Service Worker aktivieren lassen (Banner-Klick), übernimmt er sofort
+self.addEventListener("message", e => {
+  if (e.data && e.data.type === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("activate", e => {

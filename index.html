@@ -20,9 +20,18 @@
   <button id="fehler-knopf" aria-label="Fehler melden">⚠ Fehler</button>
 </header>
 
+<button id="update-banner" type="button"></button>
 <button id="wochen-banner" type="button"></button>
 
 <main id="inhalt"><!-- wird per JS gefüllt --></main>
+
+<div id="update-dialog" hidden>
+  <div class="dialog">
+    <h2 id="update-titel"></h2>
+    <ul id="update-liste"></ul>
+    <button class="btn" id="update-ok">Alles klar</button>
+  </div>
+</div>
 
 <nav id="tabs">
   <button class="tab" data-view="maschinen"><span class="tab-ico">▦</span>Maschinen</button>

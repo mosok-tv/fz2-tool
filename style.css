@@ -25,6 +25,22 @@ body { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
   font-family: inherit; cursor: pointer; }
 #wochen-banner.zeigen { display: block; }
 
+/* Update-Banner */
+#update-banner { display: none; width: 100%; border: none; text-align: left;
+  background: var(--green); color: #fff; padding: 13px 16px; font-size: .92rem; font-weight: 600;
+  font-family: inherit; cursor: pointer; }
+#update-banner.zeigen { display: block; }
+
+/* Update-Dialog ("Was ist neu") */
+#update-dialog { position: fixed; inset: 0; z-index: 50; background: rgba(20,30,40,.55);
+  display: flex; align-items: center; justify-content: center; padding: 24px; }
+#update-dialog[hidden] { display: none; }
+#update-dialog .dialog { background: #fff; border-radius: 14px; padding: 22px; max-width: 420px; width: 100%;
+  box-shadow: 0 10px 30px rgba(0,0,0,.3); }
+#update-dialog h2 { margin: 0 0 12px; color: var(--blau); font-size: 1.15rem; }
+#update-dialog ul { margin: 0 0 18px; padding-left: 20px; }
+#update-dialog li { margin-bottom: 7px; line-height: 1.35; }
+
 /* Inhalt */
 #inhalt { padding: 16px; max-width: 700px; margin: 0 auto; }
 .karte { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 14px;
