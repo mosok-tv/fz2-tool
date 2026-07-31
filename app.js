@@ -1,6 +1,8 @@
 "use strict";
 
-const APP_VERSION = "1.2";
+const APP_VERSION = "1.3";
+const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
+const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
 /* ---------- Feste Vorgaben (nicht ohne Rücksprache ändern) ---------- */
 const MASCHINEN = ["Z49", "Z67", "Z68", "Z78", "Z82", "Z83"];
@@ -67,6 +69,7 @@ window.addEventListener("unhandledrejection", e => logFehler("Programmfehler", (
 /* ---------- Router ---------- */
 const state = { view: "maschinen", maschine: null, overlay: null };
 let spModus = "summe";  // Berechnungsart der Vorzüge: "summe" | "kleinster"
+let spEditId = null;    // gesetzt, wenn eine gespeicherte Berechnung bearbeitet wird
 const inhalt = document.getElementById("inhalt");
 const titel = document.getElementById("kopf-titel");
 
@@ -166,7 +169,8 @@ function renderSpulen() {
         ${e.geschwindigkeit ? "<br>Bei " + fmt(e.geschwindigkeit, 1) + " m/s → Laufzeit gesamt <b>" + hm(e.endlaenge_m / e.geschwindigkeit) + "</b> · je Spule <b>" + hm(e.laenge_je_spule / e.geschwindigkeit) + "</b>" : ""}
       </div>
       <div class="meta">G = ${fmt(e.metergewicht, 4)} kg/km · ${e.created_at}</div>
-      <button class="btn btn-klein btn-rot" data-del-spule="${e.id}" style="margin-top:6px">Löschen</button>
+      <button class="btn btn-klein" data-edit-spule="${e.id}" style="margin-top:6px">Bearbeiten</button>
+      <button class="btn btn-klein btn-rot" data-del-spule="${e.id}" style="margin-top:6px;margin-left:6px">Löschen</button>
     </div>`).join("") || `<div class="leer">Noch keine Berechnung gespeichert.</div>`;
 
   inhalt.innerHTML = `
@@ -240,7 +244,8 @@ function renderSpulen() {
 
 function spVal(id) { return zahl(document.getElementById(id).value); }
 function spRechne() {
-  const G = spVal("sp-g"), faktor = spVal("sp-faktor"), nSpulen = spVal("sp-nspulen"), v = spVal("sp-v");
+  const G = spVal("sp-g"), nSpulen = spVal("sp-nspulen"), v = spVal("sp-v");
+  let faktor = spVal("sp-faktor"); if (faktor <= 0) faktor = 100;  // leer/0 = kein Abzug
   document.getElementById("sp-g-hint").textContent = G > 0 ? `1 km wiegt ${fmt(G, 4)} kg · 1 kg = ${fmt(1000 / G, 1)} m` : "Wert von der Prüfkarte eintragen (Spalte G, kg/km).";
   const vzWerte = [];
   document.querySelectorAll(".vz").forEach(el => { const w = zahl(el.value); if (w > 0) vzWerte.push(w); });
@@ -277,13 +282,13 @@ function spRechne() {
 function gErmittelt() { const gKg = spVal("g-kg"), gM = spVal("g-m"); return (gKg > 0 && gM > 0) ? gKg / (gM / 1000) : 0; }
 
 function speichereSpule() {
-  const G = spVal("sp-g"), faktor = spVal("sp-faktor");
+  const G = spVal("sp-g");
+  let faktor = spVal("sp-faktor"); if (faktor <= 0) faktor = 100;  // leer/0 = kein Abzug
   let nSpulen = Math.floor(spVal("sp-nspulen"));
   const vz = Array.from(document.querySelectorAll(".vz")).map(el => zahl(el.value)).filter(w => w > 0);
   const v = spVal("sp-v");
   if (G <= 0) return flash("Metergewicht (kg/km) fehlt.");
   if (!vz.length) return flash("Mindestens ein Vorzug-Gewicht angeben.");
-  if (faktor <= 0) return flash("Faktor muss größer als 0 sein.");
   if (nSpulen < 1) return flash("Anzahl Fertigspulen muss mindestens 1 sein.");
   const summe = vz.reduce((a, b) => a + b, 0);
   const gesamt = spModus === "kleinster" ? Math.min(...vz) * vz.length : summe;
@@ -296,8 +301,30 @@ function speichereSpule() {
     gewicht_je_spule: eg / nSpulen, laenge_je_spule: eg / nSpulen / G * 1000,
     geschwindigkeit: v > 0 ? v : null, created_at: jetzt(),
   };
-  const list = spulen(); list.push(eintrag); DB.set("spulen", list);
-  flash("Berechnung gespeichert."); render();
+  let list = spulen();
+  if (spEditId) { list = list.filter(s => s.id !== spEditId); spEditId = null; }  // Bearbeitung ersetzt den alten Eintrag
+  list.push(eintrag); DB.set("spulen", list);
+  flash("Berechnung gespeichert."); render(); window.scrollTo(0, 0);
+}
+
+function deStr(n) { return String(n).replace(".", ","); }
+
+function editSpule(id) {
+  const e = spulen().find(s => s.id === id);
+  if (!e) return;
+  spEditId = id;
+  spModus = e.modus || "summe";
+  document.getElementById("sp-auftrag").value = e.auftrag || "";
+  document.getElementById("sp-g").value = deStr(e.metergewicht);
+  document.getElementById("sp-faktor").value = deStr(e.faktor);
+  document.getElementById("sp-nspulen").value = String(e.anzahl_spulen);
+  document.getElementById("sp-v").value = e.geschwindigkeit ? deStr(e.geschwindigkeit) : "";
+  const felder = document.querySelectorAll(".vz");
+  felder.forEach((el, i) => el.value = (e.vz_gewichte && e.vz_gewichte[i] != null) ? deStr(e.vz_gewichte[i]) : "");
+  document.querySelectorAll(".modus button").forEach(b => b.classList.toggle("aktiv", b.dataset.modus === spModus));
+  spRechne();
+  window.scrollTo(0, 0);
+  flash("Werte geladen – ändern und erneut speichern.");
 }
 
 /* ---------- Ansicht: Mehr / Sicherung ---------- */
@@ -371,7 +398,7 @@ function renderFehler() {
     </div>
     <div class="karte">
       <h2>Automatisch erfasste Fehler</h2>${auto}
-      ${fehler.length ? '<button class="btn btn-grau btn-klein" data-fehler-loeschen="1" style="margin-top:10px">Liste leeren</button>' : ""}
+      ${fehler.length ? '<button class="btn" data-wochenbericht="1" style="margin-top:10px">Wochenbericht per Mail senden</button><p class="hinweis">Fasst die erfassten Meldungen zusammen und öffnet eine fertige E-Mail – nur noch absenden.</p><button class="btn btn-grau btn-klein" data-fehler-loeschen="1" style="margin-top:4px">Liste leeren</button>' : ""}
     </div>`;
 }
 
@@ -422,12 +449,44 @@ async function sendeFehlerbericht() {
   }
 }
 
+/* ---------- Wochenbericht (automatische Sammlung) ---------- */
+function pruefeWochenbericht() {
+  const banner = document.getElementById("wochen-banner");
+  let last = DB.get("report_last_ts", null);
+  if (last == null) { last = Date.now(); DB.set("report_last_ts", last); }  // Woche ab erster Nutzung
+  const anzahl = DB.get("fehler", []).length;
+  const faellig = (Date.now() - last >= WOCHE_MS) && anzahl > 0;
+  banner.classList.toggle("zeigen", faellig);
+  if (faellig) banner.textContent = "⚠ Wochenbericht fällig – " + anzahl + " Meldung(en). Zum Senden tippen.";
+}
+
+function wochenberichtMail() {
+  const fehler = DB.get("fehler", []);
+  let body = "Wochenbericht fz2-tool (Version " + APP_VERSION + ")\n";
+  body += "Erstellt: " + jetzt() + "\n";
+  body += "Gerät: " + (navigator.userAgent || "") + "\n";
+  body += "Daten: " + entries().length + " Maschinen-Einträge, " + todos().length + " Aufgaben, " + spulen().length + " Berechnungen\n\n";
+  if (!fehler.length) {
+    body += "Keine automatischen Meldungen in diesem Zeitraum.\n";
+  } else {
+    body += fehler.length + " automatisch erfasste Meldung(en):\n";
+    fehler.slice(-15).forEach((f, i) => {
+      body += (i + 1) + ") " + f.zeit + " [" + f.ansicht + "] " + f.art + ": " + String(f.nachricht).slice(0, 150) + "\n";
+    });
+  }
+  DB.set("report_last_ts", Date.now());
+  pruefeWochenbericht();
+  flash("E-Mail wird geöffnet – bitte absenden.");
+  location.href = "mailto:" + REPORT_MAIL + "?subject=" + encodeURIComponent("Wochenbericht fz2-tool " + jetzt())
+    + "&body=" + encodeURIComponent(body);
+}
+
 /* ---------- Ereignisse (Delegation) ---------- */
 document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-save-spule],[data-del-spule],[data-g-uebernehmen],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-loeschen]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-loeschen],[data-wochenbericht]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -442,6 +501,7 @@ document.addEventListener("click", e => {
     spRechne();
   }
   else if (el.dataset.saveSpule) speichereSpule();
+  else if (el.dataset.editSpule) editSpule(el.dataset.editSpule);
   else if (el.dataset.delSpule) delSpule(el.dataset.delSpule);
   else if (el.dataset.gUebernehmen) { const g = gErmittelt(); if (g > 0) { document.getElementById("sp-g").value = fmt(g, 4); spRechne(); flash("G übernommen: " + fmt(g, 4) + " kg/km"); } else flash("Erst Gewicht und Länge der Spule eingeben."); }
   else if (el.dataset.export) exportData();
@@ -449,8 +509,10 @@ document.addEventListener("click", e => {
   else if (el.dataset.fehlerZurueck) { state.overlay = null; render(); window.scrollTo(0, 0); }
   else if (el.dataset.fehlerSenden) sendeFehlerbericht();
   else if (el.dataset.fehlerLoeschen) { if (confirm("Fehlerliste leeren?")) { DB.set("fehler", []); aktualisiereFehlerBadge(); render(); } }
+  else if (el.dataset.wochenbericht) wochenberichtMail();
 });
 document.getElementById("fehler-knopf").addEventListener("click", () => { state.overlay = "fehler"; render(); window.scrollTo(0, 0); });
+document.getElementById("wochen-banner").addEventListener("click", wochenberichtMail);
 document.addEventListener("input", e => { if (e.target.closest("#inhalt") && state.view === "spulen") spRechne(); });
 
 function gewaehlterStatus() { const a = document.querySelector(".status-opt.aktiv"); return a ? a.dataset.status : null; }
@@ -485,3 +547,4 @@ if ("serviceWorker" in navigator) {
 /* ---------- Start ---------- */
 zeige("maschinen");
 aktualisiereFehlerBadge();
+pruefeWochenbericht();

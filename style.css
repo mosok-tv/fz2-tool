@@ -19,6 +19,12 @@ body { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
 .kopf-btn { background: rgba(255,255,255,.15); border: none; color: #fff; font-size: .95rem;
   padding: 7px 12px; border-radius: 8px; font-weight: 600; }
 
+/* Wochenbericht-Banner */
+#wochen-banner { display: none; width: 100%; border: none; text-align: left;
+  background: var(--yellow); color: #fff; padding: 13px 16px; font-size: .92rem; font-weight: 600;
+  font-family: inherit; cursor: pointer; }
+#wochen-banner.zeigen { display: block; }
+
 /* Inhalt */
 #inhalt { padding: 16px; max-width: 700px; margin: 0 auto; }
 .karte { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 14px;
