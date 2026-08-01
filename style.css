@@ -25,6 +25,12 @@ body { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
   font-family: inherit; cursor: pointer; }
 #wochen-banner.zeigen { display: block; }
 
+/* Installieren-Banner (Android/Chrome) */
+#install-banner { display: none; width: 100%; border: none; text-align: left;
+  background: var(--blau); color: #fff; padding: 13px 16px; font-size: .92rem; font-weight: 600;
+  font-family: inherit; cursor: pointer; }
+#install-banner.zeigen { display: block; }
+
 /* Update-Banner */
 #update-banner { display: none; width: 100%; border: none; text-align: left;
   background: var(--green); color: #fff; padding: 13px 16px; font-size: .92rem; font-weight: 600;

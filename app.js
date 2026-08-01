@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.0";
+const APP_VERSION = "2.1";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -1116,6 +1116,9 @@ function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("sp
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "2.1": [
+    "Android: eigener Knopf zum Installieren auf dem Startbildschirm",
+  ],
   "2.0": [
     "Eigene Benutzer mit Passwort – jeder Eintrag zeigt, wer ihn gemacht hat",
     "Anmelden/Abmelden, Benutzer verwalten unter Mehr",
@@ -1172,6 +1175,25 @@ function zeigeWasNeu() {
 }
 document.getElementById("update-ok").addEventListener("click", () => {
   document.getElementById("update-dialog").hidden = true;
+});
+
+/* ---------- Installieren-Angebot (Android/Chrome) ---------- */
+let installEreignis = null;
+window.addEventListener("beforeinstallprompt", e => {
+  e.preventDefault();               // eigenen Knopf statt Chrome-Leiste zeigen
+  installEreignis = e;
+  document.getElementById("install-banner").classList.add("zeigen");
+});
+document.getElementById("install-banner").addEventListener("click", async () => {
+  if (!installEreignis) return;
+  installEreignis.prompt();
+  try { await installEreignis.userChoice; } catch (e) { /* abgebrochen */ }
+  installEreignis = null;
+  document.getElementById("install-banner").classList.remove("zeigen");
+});
+window.addEventListener("appinstalled", () => {
+  document.getElementById("install-banner").classList.remove("zeigen");
+  flash("App ist installiert – ab jetzt über das Symbol starten.");
 });
 
 /* ---------- Service Worker + Auto-Update ---------- */
