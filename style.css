@@ -41,6 +41,18 @@ body { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
 #update-dialog ul { margin: 0 0 18px; padding-left: 20px; }
 #update-dialog li { margin-bottom: 7px; line-height: 1.35; }
 
+/* Zugangssperre */
+#sperre { position: fixed; inset: 0; z-index: 100; background: var(--dunkel);
+  display: flex; align-items: center; justify-content: center; padding: 24px; }
+#sperre[hidden] { display: none; }
+.sperre-box { text-align: center; max-width: 300px; width: 100%; }
+.sperre-logo { font-size: 2.4rem; font-weight: 800; color: #fff; letter-spacing: 1px; margin-bottom: 6px; }
+#sperre-titel { color: rgba(255,255,255,.85); font-size: 1rem; margin-bottom: 16px; }
+#sperre-code { width: 100%; padding: 14px; font-size: 1.3rem; text-align: center; letter-spacing: 4px;
+  border: none; border-radius: 10px; margin-bottom: 10px; }
+#sperre-fehler { color: #ff9a9a; font-size: .88rem; min-height: 20px; margin: 0 0 8px; }
+#sperre .btn { background: var(--blau); }
+
 /* Inhalt */
 #inhalt { padding: 16px; max-width: 700px; margin: 0 auto; }
 .karte { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 14px;

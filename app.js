@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.5";
+const APP_VERSION = "1.6";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -546,10 +546,39 @@ function renderMehr() {
       <button class="btn btn-grau" data-import="1" style="margin-top:10px">Aus Datei einlesen</button>
     </div>
     <div class="karte">
+      <h2>Zugangscode</h2>
+      ${DB.get("pin_hash", null)
+        ? `<p class="hinweis" style="margin-top:0">Die App ist mit einem Code gesperrt. Beim Öffnen muss er eingegeben werden.</p>
+           <button class="btn btn-grau" data-code-aendern="1">Code ändern</button>
+           <button class="btn btn-grau btn-klein" data-code-entfernen="1" style="margin-top:8px">Code entfernen</button>`
+        : `<p class="hinweis" style="margin-top:0">Noch kein Code. Mit einem Code sieht niemand die Daten, der das Gerät in die Hand bekommt.</p>
+           <input type="password" id="code-neu" inputmode="numeric" maxlength="12" placeholder="Neuer Code (Zahlen)">
+           <button class="btn" data-code-setzen="1" style="margin-top:10px">Code festlegen</button>`}
+    </div>
+    <div class="karte">
       <h2>Info</h2>
       <p class="hinweis" style="margin-top:0">Schichtübergabe Feinzug 2 – läuft offline auf dem Gerät, alle Daten bleiben lokal.
       Maschinen und Ampel-Status sind fest vorgegeben (Z49–Z83; grün=Produktion, gelb=Umbau, rot=Drahtriss, blau=Reparatur, violett=Abrüsten).</p>
     </div>`;
+}
+
+async function codeSetzen() {
+  const code = document.getElementById("code-neu").value.trim();
+  if (code.length < 4) return flash("Bitte mindestens 4 Zeichen.");
+  DB.set("pin_hash", await pinHash(code));
+  flash("Code gesetzt – ab dem nächsten Start aktiv."); render();
+}
+async function codeAendern() {
+  const code = (prompt("Neuen Code eingeben (mind. 4 Zeichen):") || "").trim();
+  if (!code) return;
+  if (code.length < 4) return flash("Bitte mindestens 4 Zeichen.");
+  DB.set("pin_hash", await pinHash(code));
+  flash("Code geändert.");
+}
+function codeEntfernen() {
+  if (!confirm("Zugangscode entfernen? Die App ist dann ohne Code offen.")) return;
+  localStorage.removeItem("sue_pin_hash");
+  flash("Code entfernt."); render();
 }
 
 function exportData() {
@@ -692,7 +721,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-verlauf],[data-verlauf-zurueck],[data-check],[data-ruest-abschluss],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-loeschen],[data-wochenbericht]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-verlauf],[data-verlauf-zurueck],[data-check],[data-ruest-abschluss],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -721,6 +750,9 @@ document.addEventListener("click", e => {
   else if (el.dataset.gUebernehmen) { const g = gErmittelt(); if (g > 0) { document.getElementById("sp-g").value = fmt(g, 4); spRechne(); flash("G übernommen: " + fmt(g, 4) + " kg/km"); } else flash("Erst Gewicht und Länge der Spule eingeben."); }
   else if (el.dataset.export) exportData();
   else if (el.dataset.import) importData();
+  else if (el.dataset.codeSetzen) codeSetzen();
+  else if (el.dataset.codeAendern) codeAendern();
+  else if (el.dataset.codeEntfernen) codeEntfernen();
   else if (el.dataset.fehlerZurueck) { state.overlay = null; render(); window.scrollTo(0, 0); }
   else if (el.dataset.fehlerSenden) sendeFehlerbericht();
   else if (el.dataset.fehlerLoeschen) { if (confirm("Fehlerliste leeren?")) { DB.set("fehler", []); aktualisiereFehlerBadge(); render(); } }
@@ -759,6 +791,10 @@ function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("sp
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "1.6": [
+    "Zugangscode: App kann mit einem Code gesperrt werden (unter Mehr)",
+    "Schützt die Daten, wenn das Gerät in fremde Hände gerät",
+  ],
   "1.5": [
     "Neuer Bereich Rüsten: Draht-Rezepte je Typ (z. B. VSW 6×0,050)",
     "Beim Einrichten: einzustellende Werte abhaken (grün) und Ist-Wert eintragen",
@@ -821,8 +857,41 @@ if ("serviceWorker" in navigator) {
   });
 }
 
+/* ---------- Zugangssperre ---------- */
+async function pinHash(code) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("fz2-salt:" + code));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+function starteApp() {
+  zeige("maschinen");
+  aktualisiereFehlerBadge();
+  pruefeWochenbericht();
+  zeigeWasNeu();
+}
+async function entsperren() {
+  const code = document.getElementById("sperre-code").value;
+  const hash = DB.get("pin_hash", null);
+  if (code && await pinHash(code) === hash) {
+    document.getElementById("sperre").hidden = true;
+    document.getElementById("sperre-code").value = "";
+    starteApp();
+  } else {
+    document.getElementById("sperre-fehler").textContent = "Falscher Code.";
+    document.getElementById("sperre-code").value = "";
+    document.getElementById("sperre-code").focus();
+  }
+}
+function pruefeSperre() {
+  if (DB.get("pin_hash", null)) {
+    const s = document.getElementById("sperre");
+    s.hidden = false;
+    document.getElementById("sperre-code").focus();
+  } else {
+    starteApp();  // kein Code eingerichtet -> direkt starten
+  }
+}
+document.getElementById("sperre-ok").addEventListener("click", entsperren);
+document.getElementById("sperre-code").addEventListener("keydown", e => { if (e.key === "Enter") entsperren(); });
+
 /* ---------- Start ---------- */
-zeige("maschinen");
-aktualisiereFehlerBadge();
-pruefeWochenbericht();
-zeigeWasNeu();
+pruefeSperre();
