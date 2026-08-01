@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.9";
+const APP_VERSION = "2.0";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -70,6 +70,8 @@ function todos()   { return DB.get("todos", []); }
 function spulen()  { return DB.get("spulen", []); }
 function rezepte() { return DB.get("rezepte", []); }
 function ruestungen() { return DB.get("ruestungen", []); }
+function benutzerListe() { return DB.get("benutzer", []); }
+function wer() { return DB.get("angemeldet", "") || ""; }
 
 // Einzustellende Werte (die *-Felder aus dem Erstmuster), nach Bereich gruppiert
 const EINSTELLFELDER = [
@@ -189,7 +191,7 @@ function renderMaschinen() {
 
   const mitNotiz = MASCHINEN.map(letzterEintrag).filter(e => e && e.note);
   let status = mitNotiz.length
-    ? mitNotiz.map(e => `<div class="eintrag"><b>${e.machine}</b> <span class="stat" style="color:var(--${STATUS[e.status].farbe})">${STATUS[e.status].label}</span> – ${esc(e.note)}<div class="meta">${e.created_at}</div></div>`).join("")
+    ? mitNotiz.map(e => `<div class="eintrag"><b>${e.machine}</b> <span class="stat" style="color:var(--${STATUS[e.status].farbe})">${STATUS[e.status].label}</span> – ${esc(e.note)}<div class="meta">${e.created_at}${e.benutzer ? " · " + esc(e.benutzer) : ""}</div></div>`).join("")
     : `<div class="leer">Keine Notizen vorhanden.</div>`;
 
   inhalt.innerHTML = `<div class="grid">${kacheln}</div>
@@ -201,7 +203,7 @@ function renderMaschineDetail() {
   titel.innerHTML = `${m}`;
   const hist = entries().filter(e => e.machine === m).slice().reverse();
   let histHtml = hist.length
-    ? hist.map(e => `<div class="eintrag"><span class="punkt d-${STATUS[e.status].farbe}"></span><span class="stat">${STATUS[e.status].label}</span>${e.note ? " – " + esc(e.note) : ""}<div class="meta">${e.created_at}</div></div>`).join("")
+    ? hist.map(e => `<div class="eintrag"><span class="punkt d-${STATUS[e.status].farbe}"></span><span class="stat">${STATUS[e.status].label}</span>${e.note ? " – " + esc(e.note) : ""}<div class="meta">${e.created_at}${e.benutzer ? " · " + esc(e.benutzer) : ""}</div></div>`).join("")
     : `<div class="leer">Noch kein Eintrag.</div>`;
 
   let optionen = Object.keys(STATUS).map(k =>
@@ -227,7 +229,7 @@ function renderAufgaben() {
   const liste = items.length ? items.map(t => `
     <div class="eintrag">
       <div class="${t.done ? "durchgestrichen" : ""}">${t.machine ? "<b>" + t.machine + ":</b> " : ""}${esc(t.text)}</div>
-      <div class="meta">${t.created_at}${t.done && t.done_at ? " · ✓ erledigt " + t.done_at : ""}</div>
+      <div class="meta">${t.created_at}${t.benutzer ? " · " + esc(t.benutzer) : ""}${t.done && t.done_at ? " · ✓ erledigt " + t.done_at + (t.done_von ? " von " + esc(t.done_von) : "") : ""}</div>
       <button class="btn btn-klein ${t.done ? "btn-grau" : ""}" data-toggle-todo="${t.id}" style="margin-top:6px">${t.done ? "wieder offen" : "✓ erledigt"}</button>
       <button class="btn btn-klein btn-rot" data-del-todo="${t.id}" style="margin-top:6px;margin-left:6px">Löschen</button>
     </div>`).join("") : `<div class="leer">Nichts offen. 🎉</div>`;
@@ -257,7 +259,7 @@ function renderSpulen() {
         ${e.anzahl_spulen} Fertigspulen → je <b>${fmt(e.gewicht_je_spule)} kg</b> / <b>${fmt(e.laenge_je_spule, 0)} m</b>
         ${e.geschwindigkeit ? "<br>Bei " + fmt(e.geschwindigkeit, 1) + " m/s → Laufzeit gesamt <b>" + hm(e.endlaenge_m / e.geschwindigkeit) + "</b> · je Spule <b>" + hm(e.laenge_je_spule / e.geschwindigkeit) + "</b>" : ""}
       </div>
-      <div class="meta">G = ${fmt(e.metergewicht, 4)} kg/km · ${e.created_at}</div>
+      <div class="meta">G = ${fmt(e.metergewicht, 4)} kg/km · ${e.created_at}${e.benutzer ? " · " + esc(e.benutzer) : ""}</div>
       <button class="btn btn-klein" data-edit-spule="${e.id}" style="margin-top:6px">Bearbeiten</button>
       <button class="btn btn-klein btn-rot" data-del-spule="${e.id}" style="margin-top:6px;margin-left:6px">Löschen</button>
     </div>`).join("") || `<div class="leer">Noch keine Berechnung gespeichert.</div>`;
@@ -388,7 +390,7 @@ function speichereSpule() {
     modus: spModus, summe_alle: summe, faktor: faktor,
     endgewicht: eg, endlaenge_m: eg / G * 1000, anzahl_spulen: nSpulen,
     gewicht_je_spule: eg / nSpulen, laenge_je_spule: eg / nSpulen / G * 1000,
-    geschwindigkeit: v > 0 ? v : null, created_at: jetzt(),
+    geschwindigkeit: v > 0 ? v : null, benutzer: wer(), created_at: jetzt(),
   };
   let list = spulen();
   if (spEditId) { list = list.filter(s => s.id !== spEditId); spEditId = null; }  // Bearbeitung ersetzt den alten Eintrag
@@ -596,7 +598,7 @@ function renderVerlauf() {
       const i = e.ist[f.name];
       return `<div class="v-zeile"><span>${esc(f.name)}</span><span>Soll ${esc(i.soll || "–")} · Ist <b>${esc(i.wert || "–")}</b></span></div>`;
     }).join("");
-    return `<div class="eintrag"><div><b>${e.datum}</b>${e.maschine ? " · " + esc(e.maschine) : ""}</div>${zeilen || '<div class="meta">keine Ist-Werte notiert</div>'}</div>`;
+    return `<div class="eintrag"><div><b>${e.datum}</b>${e.maschine ? " · " + esc(e.maschine) : ""}${e.benutzer ? " · " + esc(e.benutzer) : ""}</div>${zeilen || '<div class="meta">keine Ist-Werte notiert</div>'}</div>`;
   }).join("") : `<div class="leer">Noch keine abgeschlossene Rüstung.</div>`;
   inhalt.innerHTML = `
     <button class="btn btn-grau btn-klein" data-verlauf-zurueck="${r ? r.id : ''}">‹ Zurück</button>
@@ -627,7 +629,7 @@ function renderRezeptVergleich() {
   if (!r) { state.vergleich = null; return render(); }
   titel.textContent = "Änderungen";
   const historie = r.historie || [];
-  const aktuell = { soll: r.soll, kuerzel: r.kuerzel, aufbau: r.aufbau, klartext: r.klartext, maschine: r.maschine, beispiel_auftrag: r.beispiel_auftrag, stand_vom: r.geaendert_am || r.created_at, istAktuell: true };
+  const aktuell = { soll: r.soll, kuerzel: r.kuerzel, aufbau: r.aufbau, klartext: r.klartext, maschine: r.maschine, beispiel_auftrag: r.beispiel_auftrag, stand_vom: r.geaendert_am || r.created_at, geaendert_von: r.geaendert_von || r.benutzer || '', istAktuell: true };
   const staende = historie.concat([aktuell]);
   let html;
   if (staende.length < 2) {
@@ -638,7 +640,7 @@ function renderRezeptVergleich() {
       const neu = staende[i], alt = staende[i - 1];
       const aend = diffFelder(alt, neu);
       const zeilen = aend.map(a => `<div class="v-zeile"><span>${esc(a.feld)}</span><span><span class="alt-wert">${esc(a.alt)}</span> → <b>${esc(a.neu)}</b></span></div>`).join("");
-      bloecke.push(`<div class="eintrag"><div><b>Geändert am ${esc(neu.stand_vom || "?")}</b>${neu.istAktuell ? " · aktueller Stand" : ""}</div>${zeilen || '<div class="meta">keine Wertänderung</div>'}</div>`);
+      bloecke.push(`<div class="eintrag"><div><b>Geändert am ${esc(neu.stand_vom || "?")}</b>${neu.geaendert_von ? " · " + esc(neu.geaendert_von) : ""}${neu.istAktuell ? " · aktueller Stand" : ""}</div>${zeilen || '<div class="meta">keine Wertänderung</div>'}</div>`);
     }
     html = bloecke.join("");
   }
@@ -677,13 +679,13 @@ function speichereRezept() {
       if (JSON.stringify(alt) !== JSON.stringify(neu)) {
         // nur bei echter Änderung: alten Stand in die Historie sichern
         if (!r.historie) r.historie = [];
-        r.historie.push(Object.assign({}, alt, { stand_vom: r.geaendert_am || r.created_at }));
+        r.historie.push(Object.assign({}, alt, { stand_vom: r.geaendert_am || r.created_at, geaendert_von: r.geaendert_von || r.benutzer || '' }));
         Object.assign(r, daten);
-        r.geaendert_am = jetzt();
+        r.geaendert_am = jetzt(); r.geaendert_von = wer();
       }
     }
   } else {
-    list.push({ id: neueId(), ...daten, ruest_status: {}, historie: [], created_at: jetzt(), geaendert_am: jetzt() });
+    list.push({ id: neueId(), ...daten, ruest_status: {}, historie: [], benutzer: wer(), created_at: jetzt(), geaendert_am: jetzt() });
   }
   DB.set("rezepte", list);
   state.rezeptForm = null; wiz = null;
@@ -719,7 +721,7 @@ function ruestAbschluss(id) {
     ist[f.name] = { soll: soll[f.name], wert: st.ist || "", erledigt: !!st.erledigt };
   });
   const rl = ruestungen();
-  rl.push({ id: neueId(), rezept_id: id, kuerzel: r.kuerzel, maschine: r.maschine, datum: jetzt(), ist: ist });
+  rl.push({ id: neueId(), rezept_id: id, kuerzel: r.kuerzel, maschine: r.maschine, benutzer: wer(), datum: jetzt(), ist: ist });
   DB.set("ruestungen", rl);
   r.ruest_status = {};  // für die nächste Rüstung zurücksetzen
   DB.set("rezepte", list);
@@ -739,6 +741,22 @@ function renderMehr() {
       <div class="label" style="margin-top:14px">Sicherung wiederherstellen</div>
       <input type="file" id="import-file" accept="application/json,.json">
       <button class="btn btn-grau" data-import="1" style="margin-top:10px">Aus Datei einlesen</button>
+    </div>
+    <div class="karte">
+      <h2>Benutzer</h2>
+      <p class="hinweis" style="margin-top:0">Angemeldet als <b>${esc(wer() || "–")}</b>. Jeder Eintrag wird mit dem Namen vermerkt.</p>
+      <button class="btn btn-grau" data-abmelden="1">Abmelden</button>
+      <div class="label" style="margin-top:14px">Vorhandene Benutzer</div>
+      ${benutzerListe().map(b => `<div class="eintrag" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <span>${esc(b.name)}${b.name === wer() ? " <span class=\"meta\">(du)</span>" : ""}</span>
+        <span style="display:flex;gap:6px">
+          <button class="btn btn-klein btn-grau" data-pw-aendern="${esc(b.name)}">Passwort</button>
+          ${b.name === wer() ? "" : `<button class="btn btn-klein btn-rot" data-benutzer-loeschen="${esc(b.name)}">Löschen</button>`}
+        </span></div>`).join("")}
+      <div class="label" style="margin-top:14px">Neuen Benutzer anlegen</div>
+      <input type="text" id="nb-name" placeholder="Name" autocapitalize="none">
+      <input type="password" id="nb-pw" placeholder="Passwort" style="margin-top:8px">
+      <button class="btn" data-benutzer-neu="1" style="margin-top:10px">Benutzer anlegen</button>
     </div>
     <div class="karte">
       <h2>Darstellung</h2>
@@ -831,13 +849,26 @@ function renderFehler() {
   inhalt.innerHTML = `
     <button class="btn btn-grau btn-klein" data-fehler-zurueck="1">‹ Zurück</button>
     <div class="karte" style="margin-top:12px">
-      <h2>Fehler beschreiben</h2>
-      <p class="hinweis" style="margin-top:0">Was ist passiert? Was hast du gedrückt, was war falsch?</p>
+      <h2>Fehler melden</h2>
+      <p class="hinweis" style="margin-top:0">Nur kurz beschreiben, was nicht stimmt – alles andere hat die App schon automatisch erfasst.</p>
       <textarea id="f-text" placeholder="z. B. Endgewicht war falsch, nachdem ich VZ 3 gelöscht habe"></textarea>
-      <div class="label">Foto anhängen (optional)</div>
+      <div class="label">Bildschirmfoto anhängen (empfohlen)</div>
+      <p class="hinweis" style="margin-top:0">Am iPhone: Seitentaste + Lauter gleichzeitig drücken, dann hier auswählen.</p>
       <input type="file" id="f-foto" accept="image/*">
-      <button class="btn" data-fehler-senden="1" style="margin-top:12px">Fehlerbericht erstellen &amp; teilen</button>
-      <p class="hinweis">Es entsteht eine Datei. Schick sie per Teilen (Mail, AirDrop, in „Dateien" speichern) – die kann ich dann auslesen.</p>
+      <button class="btn" data-fehler-senden="1" style="margin-top:12px">Fehlerbericht senden</button>
+      <p class="hinweis">Geht an ${esc(REPORT_MAIL)} – die Mail wird fertig ausgefüllt geöffnet, du musst nur noch auf Senden tippen.</p>
+    </div>
+    <div class="karte">
+      <h2>Automatisch erfasst</h2>
+      <p class="hinweis" style="margin-top:0">Das schickt die App von selbst mit – du musst nichts eintragen.</p>
+      <div class="eintrag">
+        <div><b>Bildschirm:</b> ${bildschirmSchnappschuss ? esc(bildschirmSchnappschuss.titel) : "–"}</div>
+        <div class="meta">${bildschirmSchnappschuss ? esc(bildschirmSchnappschuss.ansicht) : ""}</div>
+      </div>
+      ${bildschirmSchnappschuss && bildschirmSchnappschuss.eingaben.length
+        ? `<div class="eintrag"><div><b>Eingaben:</b></div><div class="meta">${esc(bildschirmSchnappschuss.eingaben.join(" · "))}</div></div>` : ""}
+      <div class="eintrag"><div><b>Benutzer:</b> ${esc(wer() || "–")} · <b>Version:</b> ${APP_VERSION}</div></div>
+      <div class="eintrag"><div><b>Erfasste Programmfehler:</b> ${fehler.length}</div></div>
     </div>
     <div class="karte">
       <h2>Automatisch erfasste Fehler</h2>${auto}
@@ -860,36 +891,57 @@ function verkleinereFoto(file) {
   });
 }
 
+function berichtText(beschreibung) {
+  const s = bildschirmSchnappschuss;
+  const f = DB.get("fehler", []);
+  let t = "FEHLERMELDUNG – Schichtübergabe (fz2-tool)\n";
+  t += "================================\n";
+  t += "Beschreibung: " + (beschreibung || "(keine)") + "\n\n";
+  t += "Benutzer: " + (wer() || "–") + "\n";
+  t += "Zeit: " + jetzt() + "\n";
+  t += "App-Version: " + APP_VERSION + "\n";
+  if (s) {
+    t += "\n--- Bildschirm beim Fehler ---\n";
+    t += "Ansicht: " + s.titel + " (" + s.ansicht + ")\n";
+    if (s.eingaben.length) t += "Eingaben: " + s.eingaben.join(" | ") + "\n";
+    t += "\nAngezeigter Inhalt:\n" + s.sichtbar + "\n";
+  }
+  if (f.length) {
+    t += "\n--- Automatisch erfasste Programmfehler (" + f.length + ") ---\n";
+    f.slice(-8).forEach((x, i) => { t += (i + 1) + ") " + x.zeit + " [" + x.ansicht + "] " + x.art + ": " + String(x.nachricht).slice(0, 200) + "\n"; });
+  }
+  t += "\n--- Gerät ---\n" + (navigator.userAgent || "") + "\n";
+  t += "Daten: " + entries().length + " Maschinen-Einträge, " + todos().length + " Aufgaben, "
+     + spulen().length + " Berechnungen, " + rezepte().length + " Muster\n";
+  return t;
+}
+
 async function sendeFehlerbericht() {
-  const text = document.getElementById("f-text").value.trim();
+  const beschreibung = document.getElementById("f-text").value.trim();
+  if (!beschreibung) return flash("Bitte kurz beschreiben, was nicht stimmt.");
   const fInput = document.getElementById("f-foto");
-  let foto = null;
+  const text = berichtText(beschreibung);
+  const betreff = "Fehler fz2-tool – " + (wer() || "?") + " – " + jetzt();
+
+  // Mit Foto: über Teilen (Mail auswählen), damit das Bild mitgeht
   if (fInput.files && fInput.files[0]) {
-    try { foto = await verkleinereFoto(fInput.files[0]); } catch (e) { flash("Foto konnte nicht gelesen werden – Bericht ohne Foto."); }
+    try {
+      const dataUrl = await verkleinereFoto(fInput.files[0]);
+      const bin = atob(dataUrl.split(",")[1]);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const bild = new File([arr], "bildschirm.jpg", { type: "image/jpeg" });
+      const txt = new File([new Blob([text], { type: "text/plain" })], "fehlerbericht.txt", { type: "text/plain" });
+      if (navigator.canShare && navigator.canShare({ files: [bild, txt] })) {
+        await navigator.share({ files: [bild, txt], title: betreff, text: text });
+        flash("Bitte im Teilen-Menü „Mail“ wählen und an " + REPORT_MAIL + " senden.");
+        return;
+      }
+    } catch (e) { /* Teilen abgebrochen oder nicht möglich -> unten weiter */ }
   }
-  const bericht = {
-    typ: "fehlerbericht", app: "fz2-tool", version: APP_VERSION, zeit: jetzt(),
-    beschreibung: text,
-    geraet: {
-      ua: navigator.userAgent, plattform: navigator.platform || "",
-      screen: (typeof screen !== "undefined" ? screen.width + "x" + screen.height : ""),
-      standalone: !!(navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches)),
-      sprache: navigator.language,
-    },
-    auto_fehler: DB.get("fehler", []),
-    daten_umfang: { maschinen_eintraege: entries().length, aufgaben: todos().length, spulen: spulen().length },
-    foto: foto,
-  };
-  const blob = new Blob([JSON.stringify(bericht, null, 2)], { type: "application/json" });
-  const name = "fehlerbericht-" + jetzt().replace(/[.: ]/g, "-") + ".json";
-  const file = new File([blob], name, { type: "application/json" });
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: "Fehlerbericht fz2-tool" }); }
-    catch (e) { /* Nutzer hat Teilen abgebrochen */ }
-  } else {
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
-    document.body.appendChild(a); a.click(); a.remove(); flash("Fehlerbericht gespeichert.");
-  }
+  // Ohne Foto (oder wenn Teilen nicht geht): fertige Mail öffnen
+  location.href = "mailto:" + REPORT_MAIL + "?subject=" + encodeURIComponent(betreff) + "&body=" + encodeURIComponent(text);
+  flash("E-Mail wird geöffnet – nur noch auf Senden tippen.");
 }
 
 /* ---------- Wochenbericht (automatische Sammlung) ---------- */
@@ -929,7 +981,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -983,6 +1035,23 @@ document.addEventListener("click", e => {
   else if (el.dataset.gUebernehmen) { const g = gErmittelt(); if (g > 0) { document.getElementById("sp-g").value = fmt(g, 4); spRechne(); flash("G übernommen: " + fmt(g, 4) + " kg/km"); } else flash("Erst Gewicht und Länge der Spule eingeben."); }
   else if (el.dataset.export) exportData();
   else if (el.dataset.import) importData();
+  else if (el.dataset.abmelden) abmelden();
+  else if (el.dataset.benutzerNeu) {
+    const n = document.getElementById("nb-name").value.trim();
+    const p = document.getElementById("nb-pw").value;
+    if (!n || p.length < 3) { flash("Name und Passwort (mind. 3 Zeichen) angeben."); return; }
+    legeBenutzerAn(n, p).then(erfolg => { flash(erfolg ? "Benutzer angelegt." : "Name existiert schon."); render(); });
+  }
+  else if (el.dataset.pwAendern) {
+    const p = (prompt("Neues Passwort für " + el.dataset.pwAendern + ":") || "").trim();
+    if (p.length < 3) return flash("Mindestens 3 Zeichen.");
+    legeBenutzerAn(el.dataset.pwAendern, p, true).then(() => flash("Passwort geändert."));
+  }
+  else if (el.dataset.benutzerLoeschen) {
+    if (!confirm("Benutzer " + el.dataset.benutzerLoeschen + " löschen?")) return;
+    DB.set("benutzer", benutzerListe().filter(b => b.name !== el.dataset.benutzerLoeschen));
+    flash("Benutzer gelöscht."); render();
+  }
   else if (el.dataset.grossschrift) {
     const an = !DB.get("grossschrift", false);
     DB.set("grossschrift", an);
@@ -997,7 +1066,21 @@ document.addEventListener("click", e => {
   else if (el.dataset.fehlerLoeschen) { if (confirm("Fehlerliste leeren?")) { DB.set("fehler", []); aktualisiereFehlerBadge(); render(); } }
   else if (el.dataset.wochenbericht) wochenberichtMail();
 });
-document.getElementById("fehler-knopf").addEventListener("click", () => { state.overlay = "fehler"; render(); window.scrollTo(0, 0); });
+let bildschirmSchnappschuss = null;   // was beim Drücken auf „Fehler" zu sehen war
+document.getElementById("fehler-knopf").addEventListener("click", () => {
+  try {
+    bildschirmSchnappschuss = {
+      ansicht: state.view + (state.maschine ? " / " + state.maschine : "") + (state.rezept ? " / Muster" : "") + (state.rezeptForm ? " / Muster anlegen" : ""),
+      titel: titel.textContent,
+      sichtbar: (inhalt.innerText || "").replace(/\n{2,}/g, "\n").trim().slice(0, 1200),
+      eingaben: Array.from(inhalt.querySelectorAll("input, select, textarea"))
+        .filter(i => i.value && i.type !== "password" && i.type !== "file")
+        .map(i => (i.dataset.feld || i.dataset.stamm || i.id || i.name || "Feld") + " = " + i.value).slice(0, 30),
+      zeit: jetzt(),
+    };
+  } catch (e) { bildschirmSchnappschuss = null; }
+  state.overlay = "fehler"; render(); window.scrollTo(0, 0);
+});
 document.getElementById("wochen-banner").addEventListener("click", wochenberichtMail);
 document.addEventListener("input", e => {
   if (e.target.id === "ruest-suche") { ruestSuche = e.target.value; const l = document.getElementById("ruest-liste"); if (l) l.innerHTML = ruestListeHtml(); return; }
@@ -1013,7 +1096,7 @@ function speichereEintrag() {
   if (!st) return flash("Bitte einen Status wählen.");
   const note = document.getElementById("notiz").value.trim();
   const list = entries();
-  list.push({ id: neueId(), machine: state.maschine, status: st, note: note, created_at: jetzt() });
+  list.push({ id: neueId(), machine: state.maschine, status: st, note: note, benutzer: wer(), created_at: jetzt() });
   DB.set("entries", list); flash("Eintrag gespeichert."); render(); window.scrollTo(0, 0);
 }
 function addTodo() {
@@ -1021,18 +1104,24 @@ function addTodo() {
   if (!text) return flash("Bitte einen Text eingeben.");
   const machine = document.getElementById("todo-maschine").value;
   const list = todos();
-  list.push({ id: neueId(), text: text, machine: machine || null, done: false, created_at: jetzt() });
+  list.push({ id: neueId(), text: text, machine: machine || null, done: false, benutzer: wer(), created_at: jetzt() });
   DB.set("todos", list); render();
 }
 function toggleTodo(id) {
   const list = todos(); const t = list.find(x => x.id === id); if (!t) return;
-  t.done = !t.done; t.done_at = t.done ? jetzt() : null; DB.set("todos", list); render();
+  t.done = !t.done; t.done_at = t.done ? jetzt() : null; t.done_von = t.done ? wer() : null; DB.set("todos", list); render();
 }
 function delTodo(id) { if (!confirm("Aufgabe löschen?")) return; DB.set("todos", todos().filter(t => t.id !== id)); render(); }
 function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("spulen", spulen().filter(s => s.id !== id)); render(); }
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "2.0": [
+    "Eigene Benutzer mit Passwort – jeder Eintrag zeigt, wer ihn gemacht hat",
+    "Anmelden/Abmelden, Benutzer verwalten unter Mehr",
+    "Fehler melden: App erfasst Bildschirm, Eingaben und Fehler automatisch",
+    "Fehlerbericht geht mit einem Tipp per E-Mail raus",
+  ],
   "1.9": [
     "Muster anlegen jetzt Schritt für Schritt statt langem Formular",
     "Werte antippen statt eintippen – bisher benutzte Werte als große Knöpfe",
@@ -1120,12 +1209,61 @@ async function pinHash(code) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("fz2-salt:" + code));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
-function starteApp() {
+/* ---------- Benutzer / Anmeldung ---------- */
+async function legeBenutzerAn(name, passwort, ersetzen) {
+  const list = benutzerListe();
+  const vorhanden = list.find(b => b.name.toLowerCase() === name.toLowerCase());
+  const hash = await pinHash(name.toLowerCase() + ":" + passwort);
+  if (vorhanden) { if (!ersetzen) return false; vorhanden.pw = hash; }
+  else list.push({ name: name, pw: hash });
+  DB.set("benutzer", list);
+  return true;
+}
+async function seedBenutzer() {
+  if (benutzerListe().length) return;
+  await legeBenutzerAn("güntzel", "1234");
+  await legeBenutzerAn("friedl", "1234");
+}
+async function anmelden() {
+  const name = document.getElementById("login-name").value.trim();
+  const pw = document.getElementById("login-pw").value;
+  const b = benutzerListe().find(x => x.name.toLowerCase() === name.toLowerCase());
+  if (b && await pinHash(b.name.toLowerCase() + ":" + pw) === b.pw) {
+    DB.set("angemeldet", b.name);
+    document.getElementById("login").hidden = true;
+    document.getElementById("login-pw").value = "";
+    document.getElementById("login-fehler").textContent = "";
+    appLosgehen();
+  } else {
+    document.getElementById("login-fehler").textContent = "Benutzer oder Passwort falsch.";
+    document.getElementById("login-pw").value = "";
+  }
+}
+function abmelden() {
+  DB.set("angemeldet", "");
+  document.getElementById("login").hidden = false;
+  document.getElementById("login-name").value = "";
+  document.getElementById("login-pw").value = "";
+  document.getElementById("login-name").focus();
+}
+document.getElementById("login-ok").addEventListener("click", anmelden);
+document.getElementById("login-pw").addEventListener("keydown", e => { if (e.key === "Enter") anmelden(); });
+
+function appLosgehen() {
   document.body.classList.toggle("gross", DB.get("grossschrift", false));
   zeige("maschinen");
   aktualisiereFehlerBadge();
   pruefeWochenbericht();
   zeigeWasNeu();
+}
+async function starteApp() {
+  await seedBenutzer();
+  if (benutzerListe().length && !wer()) {
+    document.getElementById("login").hidden = false;
+    document.getElementById("login-name").focus();
+    return;   // erst anmelden
+  }
+  appLosgehen();
 }
 function raeumeAltePlainKeys() {
   const weg = [];

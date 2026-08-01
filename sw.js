@@ -1,5 +1,5 @@
 /* Service Worker – macht die App offline nutzbar. Version bei Änderungen erhöhen. */
-const CACHE = "schichtuebergabe-v11";
+const CACHE = "schichtuebergabe-v12";
 const DATEIEN = [
   "./", "index.html", "style.css", "app.js", "manifest.json",
   "icon-180.png", "icon-192.png", "icon-512.png",

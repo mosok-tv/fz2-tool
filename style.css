@@ -52,6 +52,13 @@ body { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
   border: none; border-radius: 10px; margin-bottom: 10px; }
 #sperre-fehler { color: #ff9a9a; font-size: .88rem; min-height: 20px; margin: 0 0 8px; }
 #sperre .btn { background: var(--blau); }
+#login { position: fixed; inset: 0; z-index: 99; background: var(--dunkel);
+  display: flex; align-items: center; justify-content: center; padding: 24px; }
+#login[hidden] { display: none; }
+#login-titel { color: rgba(255,255,255,.85); font-size: 1rem; margin-bottom: 16px; }
+#login input { width: 100%; padding: 14px; font-size: 1.05rem; border: none; border-radius: 10px; margin-bottom: 10px; }
+#login-fehler { color: #ff9a9a; font-size: .88rem; min-height: 20px; margin: 0 0 8px; }
+#login .btn { background: var(--blau); }
 
 /* Inhalt */
 #inhalt { padding: 16px; max-width: 700px; margin: 0 auto; }
