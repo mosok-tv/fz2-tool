@@ -109,6 +109,34 @@ button { font-family: inherit; cursor: pointer; }
 .vergleich > div { flex: 1; background: #f4f7f9; border: 1px solid var(--linie); border-radius: 9px; padding: 8px 10px; font-size: .82rem; color: var(--grau); }
 .vergleich .gross { display: block; margin-top: 2px; font-size: 1.15rem; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
 .vergleich .benutzt { border-color: var(--green); background: #eaf3ec; }
+
+/* Rüsten / Draht-Rezepte */
+.rz-eintrag { cursor: pointer; }
+.rz-eintrag:active { background: #f4f7f9; }
+.rz-fort { display: inline-block; font-size: .72rem; font-weight: 700; color: var(--green);
+  background: #eaf3ec; border: 1px solid #b8dcc0; border-radius: 20px; padding: 1px 8px; margin-left: 6px; }
+.rz-gruppe { font-weight: 700; color: var(--blau); font-size: .9rem; margin: 14px 0 4px; border-bottom: 1px solid var(--linie); padding-bottom: 3px; }
+.rz-feld label { margin-top: 6px; }
+.fortschritt { display: flex; align-items: center; gap: 10px; margin: 10px 0 4px; }
+.fortschritt .fz { font-weight: 700; color: var(--green); font-size: .95rem; white-space: nowrap; }
+.balken { flex: 1; height: 10px; background: #e4e9ee; border-radius: 6px; overflow: hidden; }
+.balken > div { height: 100%; background: var(--green); transition: width .2s; }
+.rz-fertig { background: #eaf3ec; border: 1px solid var(--green); border-radius: 10px; padding: 12px;
+  text-align: center; color: #2b6b39; font-weight: 700; margin-top: 10px; }
+/* Checklisten-Punkt */
+.punkt { display: flex; align-items: center; gap: 12px; padding: 11px; border: 1.5px solid var(--linie);
+  border-radius: 10px; margin-bottom: 8px; cursor: pointer; transition: .15s; }
+.punkt .p-box { flex: 0 0 26px; height: 26px; border: 2px solid var(--linie); border-radius: 7px;
+  display: flex; align-items: center; justify-content: center; color: #fff; font-size: 1rem; }
+.punkt .p-txt { flex: 1; min-width: 0; }
+.punkt .p-name { font-weight: 600; font-size: .95rem; }
+.punkt .p-ist { margin-top: 4px; padding: 7px 9px; font-size: .9rem; border: 1px solid var(--linie); border-radius: 7px; width: 100%; }
+.punkt .p-soll { text-align: right; font-size: .8rem; color: var(--grau); white-space: nowrap; }
+.punkt .p-soll b { color: var(--text); font-size: 1rem; }
+.punkt.ok { background: #eaf3ec; border-color: var(--green); }
+.punkt.ok .p-box { background: var(--green); border-color: var(--green); }
+.punkt.ok .p-name { text-decoration: line-through; color: #5b8a63; }
+.v-zeile { display: flex; justify-content: space-between; gap: 10px; font-size: .85rem; padding: 3px 0; }
 .zwei { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
 .schmal { max-width: 220px; }
 

@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.4";
+const APP_VERSION = "1.5";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -22,6 +22,41 @@ const DB = {
 function entries() { return DB.get("entries", []); }
 function todos()   { return DB.get("todos", []); }
 function spulen()  { return DB.get("spulen", []); }
+function rezepte() { return DB.get("rezepte", []); }
+function ruestungen() { return DB.get("ruestungen", []); }
+
+// Einzustellende Werte (die *-Felder aus dem Erstmuster), nach Bereich gruppiert
+const EINSTELLFELDER = [
+  { gruppe: "Ablauf", felder: [
+    { name: "Abwickelrichtung", einheit: "" },
+    { name: "Tänzer Ziehen", einheit: "bar/kg/mm" },
+    { name: "Zugkraft Ablauf", einheit: "cN" },
+  ] },
+  { gruppe: "Ziehen", felder: [
+    { name: "Ziehgeschwindigkeit", einheit: "m/s" },
+    { name: "Anzahl Drähte", einheit: "" },
+    { name: "Enddurchmesser", einheit: "mm" },
+    { name: "erster Dm schneller Teil", einheit: "mm" },
+    { name: "letzter Dm langsamer Teil", einheit: "mm" },
+    { name: "Schlupf", einheit: "%" },
+    { name: "übersprungene Stufen", einheit: "" },
+  ] },
+  { gruppe: "Glühe", felder: [
+    { name: "Glühfaktor", einheit: "" },
+    { name: "Glühspannung", einheit: "V" },
+    { name: "Glühstrom", einheit: "A" },
+    { name: "Luftdruck Glühe", einheit: "bar" },
+    { name: "Ventilöffnung Druckluft", einheit: "%" },
+    { name: "Kugelhahn Schutzgas", einheit: "%" },
+  ] },
+  { gruppe: "Spuler", felder: [
+    { name: "Spulengröße", einheit: "mm" },
+    { name: "Tänzer Spuler", einheit: "g/mm" },
+    { name: "Zugkraft Aufwickelspannung", einheit: "cN" },
+    { name: "Verlegeschritt", einheit: "V/Sek" },
+  ] },
+];
+const ALLE_FELDER = EINSTELLFELDER.flatMap(g => g.felder);
 function neueId()  { return (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2)); }
 
 /* ---------- Hilfsfunktionen ---------- */
@@ -67,14 +102,14 @@ window.addEventListener("error", e => logFehler("Programmfehler", e.message, (e.
 window.addEventListener("unhandledrejection", e => logFehler("Programmfehler", (e.reason && e.reason.message) || e.reason, e.reason && e.reason.stack));
 
 /* ---------- Router ---------- */
-const state = { view: "maschinen", maschine: null, overlay: null };
+const state = { view: "maschinen", maschine: null, overlay: null, rezept: null, rezeptForm: null, verlauf: null };
 let spModus = "summe";  // Berechnungsart der Vorzüge: "summe" | "kleinster"
 let spEditId = null;    // gesetzt, wenn eine gespeicherte Berechnung bearbeitet wird
 const inhalt = document.getElementById("inhalt");
 const titel = document.getElementById("kopf-titel");
 
 function zeige(view) {
-  state.view = view; state.maschine = null;
+  state.view = view; state.maschine = null; state.rezept = null; state.rezeptForm = null; state.verlauf = null;
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("aktiv", t.dataset.view === view));
   render();
   window.scrollTo(0, 0);
@@ -82,6 +117,12 @@ function zeige(view) {
 function render() {
   if (state.overlay === "fehler") return renderFehler();
   if (state.view === "maschinen" && state.maschine) return renderMaschineDetail();
+  if (state.view === "ruesten") {
+    if (state.rezeptForm) return renderRezeptForm();
+    if (state.verlauf) return renderVerlauf();
+    if (state.rezept) return renderRuestCheck();
+    return renderRuesten();
+  }
   ({ maschinen: renderMaschinen, aufgaben: renderAufgaben, spulen: renderSpulen, mehr: renderMehr }[state.view] || renderMaschinen)();
 }
 
@@ -327,6 +368,169 @@ function editSpule(id) {
   flash("Werte geladen – ändern und erneut speichern.");
 }
 
+/* ---------- Ansicht: Rüsten (Draht-Rezepte + Checkliste) ---------- */
+function renderRuesten() {
+  titel.textContent = "Rüsten";
+  const rz = rezepte();
+  const liste = rz.length ? rz.slice().reverse().map(r => {
+    const soll = r.soll || {}, status = r.ruest_status || {};
+    const g = Object.keys(soll).filter(k => soll[k] !== "").length;
+    const ok = Object.values(status).filter(s => s && s.erledigt).length;
+    const badge = ok > 0 ? `<span class="rz-fort">${ok}/${g} gerüstet</span>` : "";
+    return `<div class="eintrag rz-eintrag" data-rezept="${r.id}">
+      <div><b>${esc(r.kuerzel)}</b> · ${esc(r.aufbau)} ${badge}</div>
+      <div class="meta">${esc(r.klartext || "")}${r.maschine ? " · " + esc(r.maschine) : ""}</div>
+    </div>`;
+  }).join("") : `<div class="leer">Noch kein Draht-Rezept angelegt.</div>`;
+  inhalt.innerHTML = `
+    <div class="karte">
+      <p class="hinweis" style="margin-top:0">Draht-Typ wählen, um die Maschine einzurichten und die Werte abzuhaken – oder ein neues Rezept anlegen.</p>
+      <button class="btn" data-rezept-neu="1">+ Neues Draht-Rezept</button>
+    </div>
+    <div class="karte"><h2>Draht-Rezepte</h2>${liste}</div>`;
+}
+
+function renderRezeptForm() {
+  const id = state.rezeptForm;
+  const r = (id !== "neu") ? rezepte().find(x => x.id === id) : null;
+  titel.textContent = r ? "Rezept bearbeiten" : "Neues Rezept";
+  const gv = f => (r && r.soll && r.soll[f.name] != null) ? esc(r.soll[f.name]) : "";
+  const felderHtml = EINSTELLFELDER.map(grp => `
+    <div class="rz-gruppe">${grp.gruppe}</div>
+    ${grp.felder.map(f => `<div class="rz-feld"><label>${esc(f.name)}${f.einheit ? ` <span style="color:var(--grau)">(${f.einheit})</span>` : ""}</label>
+      <input type="text" class="rz-soll" data-feld="${esc(f.name)}" value="${gv(f)}" placeholder="Sollwert"></div>`).join("")}`).join("");
+  inhalt.innerHTML = `
+    <button class="btn btn-grau btn-klein" data-rezept-zurueck="1">‹ Zurück</button>
+    <div class="karte" style="margin-top:12px">
+      <h2>Draht-Typ</h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label>Kurzbezeichnung</label><input type="text" id="rz-kuerzel" value="${r ? esc(r.kuerzel) : ""}" placeholder="z. B. VSW"></div>
+        <div><label>Aufbau</label><input type="text" id="rz-aufbau" value="${r ? esc(r.aufbau) : ""}" placeholder="z. B. 6×0,050"></div>
+      </div>
+      <label>Klartext</label><input type="text" id="rz-klartext" value="${r ? esc(r.klartext || "") : ""}" placeholder="z. B. versilbert weich">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label>Maschine</label><input type="text" id="rz-maschine" value="${r ? esc(r.maschine || "") : ""}" placeholder="z. B. Z49"></div>
+        <div><label>Beispiel-Auftrag</label><input type="text" id="rz-auftrag" value="${r ? esc(r.beispiel_auftrag || "") : ""}"></div>
+      </div>
+    </div>
+    <div class="karte">
+      <h2>Einzustellende Werte</h2>
+      <p class="hinweis" style="margin-top:0">Nur ausfüllen, was relevant ist – leere Felder erscheinen nicht in der Checkliste.</p>
+      ${felderHtml}
+    </div>
+    <div class="karte"><button class="btn" data-rezept-speichern="1">Rezept speichern</button></div>`;
+}
+
+function renderRuestCheck() {
+  const r = rezepte().find(x => x.id === state.rezept);
+  if (!r) { state.rezept = null; return render(); }
+  titel.textContent = r.kuerzel + " " + r.aufbau;
+  const soll = r.soll || {}, status = r.ruest_status || {};
+  const felder = ALLE_FELDER.filter(f => soll[f.name] != null && soll[f.name] !== "");
+  const g = felder.length, ok = felder.filter(f => status[f.name] && status[f.name].erledigt).length;
+  const punkte = felder.map(f => {
+    const st = status[f.name] || {};
+    return `<div class="punkt ${st.erledigt ? "ok" : ""}" data-check="${esc(f.name)}">
+      <div class="p-box">${st.erledigt ? "✓" : ""}</div>
+      <div class="p-txt"><div class="p-name">${esc(f.name)}</div>
+        <input type="text" class="p-ist" data-ist="${esc(f.name)}" value="${st.ist != null ? esc(st.ist) : ""}" placeholder="Ist-Wert (optional)"></div>
+      <div class="p-soll">Soll<br><b>${esc(soll[f.name])}</b> <span style="font-size:.72rem;color:var(--grau)">${f.einheit}</span></div>
+    </div>`;
+  }).join("");
+  inhalt.innerHTML = `
+    <button class="btn btn-grau btn-klein" data-rezept-zurueck="1">‹ Zurück</button>
+    <div class="karte" style="margin-top:12px">
+      <div class="meta">${esc(r.klartext || "")}${r.maschine ? " · " + esc(r.maschine) : ""}</div>
+      <div class="fortschritt"><span class="fz">${ok} / ${g} eingestellt</span><div class="balken"><div style="width:${g ? ok / g * 100 : 0}%"></div></div></div>
+      ${g > 0 && g === ok ? '<div class="rz-fertig">✓ Alles eingestellt – Maschine ist gerüstet</div>' : ""}
+    </div>
+    <div class="karte"><h2>Einzustellende Werte</h2>
+      ${punkte || '<div class="leer">Keine Werte hinterlegt. Rezept bearbeiten und Sollwerte eintragen.</div>'}</div>
+    <div class="karte" style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-klein" data-rezept-bearbeiten="${r.id}">Rezept bearbeiten</button>
+      <button class="btn btn-klein btn-grau" data-verlauf="${r.id}">Verlauf</button>
+      ${g > 0 ? `<button class="btn btn-klein" data-ruest-abschluss="${r.id}">Rüstung abschließen</button>` : ""}
+    </div>`;
+}
+
+function renderVerlauf() {
+  const r = rezepte().find(x => x.id === state.verlauf);
+  titel.textContent = "Verlauf";
+  const eintraege = ruestungen().filter(x => x.rezept_id === state.verlauf).slice().reverse();
+  const liste = eintraege.length ? eintraege.map(e => {
+    const zeilen = ALLE_FELDER.filter(f => e.ist && e.ist[f.name]).map(f => {
+      const i = e.ist[f.name];
+      return `<div class="v-zeile"><span>${esc(f.name)}</span><span>Soll ${esc(i.soll || "–")} · Ist <b>${esc(i.wert || "–")}</b></span></div>`;
+    }).join("");
+    return `<div class="eintrag"><div><b>${e.datum}</b>${e.maschine ? " · " + esc(e.maschine) : ""}</div>${zeilen || '<div class="meta">keine Ist-Werte notiert</div>'}</div>`;
+  }).join("") : `<div class="leer">Noch keine abgeschlossene Rüstung.</div>`;
+  inhalt.innerHTML = `
+    <button class="btn btn-grau btn-klein" data-verlauf-zurueck="${r ? r.id : ''}">‹ Zurück</button>
+    <div class="karte" style="margin-top:12px"><h2>${r ? esc(r.kuerzel + " " + r.aufbau) : "Verlauf"} – frühere Rüstungen</h2>${liste}</div>`;
+}
+
+function speichereRezept() {
+  const kuerzel = document.getElementById("rz-kuerzel").value.trim();
+  const aufbau = document.getElementById("rz-aufbau").value.trim();
+  if (!kuerzel && !aufbau) return flash("Kurzbezeichnung oder Aufbau angeben.");
+  const soll = {};
+  document.querySelectorAll(".rz-soll").forEach(el => { const v = el.value.trim(); if (v) soll[el.dataset.feld] = v; });
+  const daten = {
+    kuerzel: kuerzel, aufbau: aufbau,
+    klartext: document.getElementById("rz-klartext").value.trim(),
+    maschine: document.getElementById("rz-maschine").value.trim(),
+    beispiel_auftrag: document.getElementById("rz-auftrag").value.trim(),
+    soll: soll,
+  };
+  const list = rezepte();
+  const id = state.rezeptForm;
+  if (id !== "neu") {
+    const r = list.find(x => x.id === id);
+    if (r) { Object.assign(r, daten); }
+  } else {
+    list.push({ id: neueId(), ...daten, ruest_status: {}, created_at: jetzt() });
+  }
+  DB.set("rezepte", list);
+  state.rezeptForm = null;
+  flash("Rezept gespeichert."); render(); window.scrollTo(0, 0);
+}
+
+function toggleCheck(feld) {
+  const list = rezepte(), r = list.find(x => x.id === state.rezept);
+  if (!r) return;
+  if (!r.ruest_status) r.ruest_status = {};
+  const st = r.ruest_status[feld] || {};
+  st.erledigt = !st.erledigt;
+  r.ruest_status[feld] = st;
+  DB.set("rezepte", list);
+  render();
+}
+function setzeIst(feld, wert) {
+  const list = rezepte(), r = list.find(x => x.id === state.rezept);
+  if (!r) return;
+  if (!r.ruest_status) r.ruest_status = {};
+  const st = r.ruest_status[feld] || {};
+  st.ist = wert;
+  r.ruest_status[feld] = st;
+  DB.set("rezepte", list);  // ohne render – Feld behält Fokus
+}
+function ruestAbschluss(id) {
+  const list = rezepte(), r = list.find(x => x.id === id);
+  if (!r) return;
+  const soll = r.soll || {}, status = r.ruest_status || {};
+  const ist = {};
+  ALLE_FELDER.filter(f => soll[f.name] != null && soll[f.name] !== "").forEach(f => {
+    const st = status[f.name] || {};
+    ist[f.name] = { soll: soll[f.name], wert: st.ist || "", erledigt: !!st.erledigt };
+  });
+  const rl = ruestungen();
+  rl.push({ id: neueId(), rezept_id: id, kuerzel: r.kuerzel, maschine: r.maschine, datum: jetzt(), ist: ist });
+  DB.set("ruestungen", rl);
+  r.ruest_status = {};  // für die nächste Rüstung zurücksetzen
+  DB.set("rezepte", list);
+  flash("Rüstung im Verlauf gespeichert."); render(); window.scrollTo(0, 0);
+}
+
 /* ---------- Ansicht: Mehr / Sicherung ---------- */
 function renderMehr() {
   titel.textContent = "Mehr";
@@ -349,7 +553,7 @@ function renderMehr() {
 }
 
 function exportData() {
-  const daten = { version: 1, exportiert: jetzt(), entries: entries(), todos: todos(), spulen: spulen() };
+  const daten = { version: 1, exportiert: jetzt(), entries: entries(), todos: todos(), spulen: spulen(), rezepte: rezepte(), ruestungen: ruestungen() };
   const text = JSON.stringify(daten, null, 2);
   const name = "schichtuebergabe-sicherung.json";
   const blob = new Blob([text], { type: "application/json" });
@@ -372,6 +576,8 @@ function importData() {
       if (Array.isArray(d.entries)) DB.set("entries", d.entries);
       if (Array.isArray(d.todos)) DB.set("todos", d.todos);
       if (Array.isArray(d.spulen)) DB.set("spulen", d.spulen);
+      if (Array.isArray(d.rezepte)) DB.set("rezepte", d.rezepte);
+      if (Array.isArray(d.ruestungen)) DB.set("ruestungen", d.ruestungen);
       flash("Sicherung eingelesen."); render();
     } catch (e) { flash("Datei nicht lesbar."); }
   };
@@ -486,7 +692,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-loeschen],[data-wochenbericht]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-verlauf],[data-verlauf-zurueck],[data-check],[data-ruest-abschluss],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-loeschen],[data-wochenbericht]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -503,6 +709,15 @@ document.addEventListener("click", e => {
   else if (el.dataset.saveSpule) speichereSpule();
   else if (el.dataset.editSpule) editSpule(el.dataset.editSpule);
   else if (el.dataset.delSpule) delSpule(el.dataset.delSpule);
+  else if (el.dataset.rezeptNeu) { state.rezeptForm = "neu"; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.rezept) { state.rezept = el.dataset.rezept; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.rezeptZurueck) { state.rezeptForm = null; state.rezept = null; state.verlauf = null; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.rezeptSpeichern) speichereRezept();
+  else if (el.dataset.rezeptBearbeiten) { state.rezeptForm = el.dataset.rezeptBearbeiten; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.verlauf) { state.verlauf = el.dataset.verlauf; state.rezept = null; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.verlaufZurueck) { state.verlauf = null; state.rezept = el.dataset.verlaufZurueck; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.check) { if (!e.target.classList.contains("p-ist")) toggleCheck(el.dataset.check); }
+  else if (el.dataset.ruestAbschluss) ruestAbschluss(el.dataset.ruestAbschluss);
   else if (el.dataset.gUebernehmen) { const g = gErmittelt(); if (g > 0) { document.getElementById("sp-g").value = fmt(g, 4); spRechne(); flash("G übernommen: " + fmt(g, 4) + " kg/km"); } else flash("Erst Gewicht und Länge der Spule eingeben."); }
   else if (el.dataset.export) exportData();
   else if (el.dataset.import) importData();
@@ -513,7 +728,10 @@ document.addEventListener("click", e => {
 });
 document.getElementById("fehler-knopf").addEventListener("click", () => { state.overlay = "fehler"; render(); window.scrollTo(0, 0); });
 document.getElementById("wochen-banner").addEventListener("click", wochenberichtMail);
-document.addEventListener("input", e => { if (e.target.closest("#inhalt") && state.view === "spulen") spRechne(); });
+document.addEventListener("input", e => {
+  if (e.target.dataset && e.target.dataset.ist) { setzeIst(e.target.dataset.ist, e.target.value); return; }
+  if (e.target.closest("#inhalt") && state.view === "spulen") spRechne();
+});
 
 function gewaehlterStatus() { const a = document.querySelector(".status-opt.aktiv"); return a ? a.dataset.status : null; }
 function speichereEintrag() {
@@ -541,6 +759,11 @@ function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("sp
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "1.5": [
+    "Neuer Bereich Rüsten: Draht-Rezepte je Typ (z. B. VSW 6×0,050)",
+    "Beim Einrichten: einzustellende Werte abhaken (grün) und Ist-Wert eintragen",
+    "Verlauf früherer Rüstungen zum Vergleichen",
+  ],
   "1.4": [
     "Auto-Update: die App meldet selbst, wenn eine neue Version da ist",
     "Übersicht der Neuerungen nach jedem Update",
