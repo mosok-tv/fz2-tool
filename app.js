@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.1";
+const APP_VERSION = "2.2";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -153,12 +153,13 @@ window.addEventListener("unhandledrejection", e => logFehler("Programmfehler", (
 const state = { view: "maschinen", maschine: null, overlay: null, rezept: null, rezeptForm: null, verlauf: null, vergleich: null };
 let spModus = "summe";  // Berechnungsart der Vorzüge: "summe" | "kleinster"
 let ruestSuche = "";    // Suchbegriff im Rüsten-Bereich
+let spulenSuche = "";   // Suchbegriff für gespeicherte Berechnungen
 let spEditId = null;    // gesetzt, wenn eine gespeicherte Berechnung bearbeitet wird
 const inhalt = document.getElementById("inhalt");
 const titel = document.getElementById("kopf-titel");
 
 function zeige(view) {
-  state.view = view; state.maschine = null; state.rezept = null; state.rezeptForm = null; state.verlauf = null; state.vergleich = null;
+  state.view = view; state.overlay = null; state.maschine = null; state.rezept = null; state.rezeptForm = null; state.verlauf = null; state.vergleich = null;
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("aktiv", t.dataset.view === view));
   render();
   window.scrollTo(0, 0);
@@ -247,11 +248,12 @@ function renderAufgaben() {
 }
 
 /* ---------- Ansicht: Spulen-Berechnung ---------- */
-function renderSpulen() {
-  titel.textContent = "Spulen-Berechnung";
-  const vzFelder = Array.from({ length: 8 }, (_, i) =>
-    `<div><div class="label">VZ ${i + 1}</div><input type="text" class="vz num" inputmode="decimal" placeholder="kg"></div>`).join("");
-  const liste = spulen().slice().reverse().map(e => `
+function spulenListeHtml() {
+  const q = spulenSuche.trim().toLowerCase();
+  const gefiltert = spulen().slice().reverse().filter(e => !q ||
+    [e.auftrag, e.benutzer, e.created_at].join(" ").toLowerCase().indexOf(q) !== -1);
+  if (!gefiltert.length) return `<div class="leer">${spulenSuche ? "Keine Berechnung gefunden." : "Noch keine Berechnung gespeichert."}</div>`;
+  return gefiltert.map(e => `
     <div class="eintrag">
       <div><b>${e.auftrag ? "Auftrag " + esc(e.auftrag) : "(ohne Auftragsnummer)"}</b></div>
       <div style="font-size:.92rem">${e.anzahl_vz} VZ ${e.modus === "kleinster" ? "(vom kleinsten)" : "(zusammen)"} = <b>${fmt(e.gesamtmasse)} kg</b> · Faktor ${fmt(e.faktor, 0)} %
@@ -262,7 +264,14 @@ function renderSpulen() {
       <div class="meta">G = ${fmt(e.metergewicht, 4)} kg/km · ${e.created_at}${e.benutzer ? " · " + esc(e.benutzer) : ""}</div>
       <button class="btn btn-klein" data-edit-spule="${e.id}" style="margin-top:6px">Bearbeiten</button>
       <button class="btn btn-klein btn-rot" data-del-spule="${e.id}" style="margin-top:6px;margin-left:6px">Löschen</button>
-    </div>`).join("") || `<div class="leer">Noch keine Berechnung gespeichert.</div>`;
+    </div>`).join("");
+}
+
+function renderSpulen() {
+  titel.textContent = "Spulen-Berechnung";
+  const vzFelder = Array.from({ length: 8 }, (_, i) =>
+    `<div><div class="label">VZ ${i + 1}</div><input type="text" class="vz num" inputmode="decimal" placeholder="kg"></div>`).join("");
+  const liste = spulenListeHtml();
 
   inhalt.innerHTML = `
     <div class="karte">
@@ -329,7 +338,9 @@ function renderSpulen() {
           <div class="zeile" style="border-bottom:none"><span>Gewicht</span><span><span class="w" id="u-m-out">–</span><span class="einheit">kg</span></span></div></div>
       </div>
     </div>
-    <div class="karte"><h2>Gespeicherte Berechnungen</h2>${liste}</div>`;
+    <div class="karte"><h2>Gespeicherte Berechnungen</h2>
+      <input type="text" id="spulen-suche" placeholder="Auftragsnummer suchen …" value="${esc(spulenSuche)}">
+      <div id="spulen-liste" style="margin-top:10px">${liste}</div></div>`;
   spRechne();
 }
 
@@ -1083,6 +1094,7 @@ document.getElementById("fehler-knopf").addEventListener("click", () => {
 });
 document.getElementById("wochen-banner").addEventListener("click", wochenberichtMail);
 document.addEventListener("input", e => {
+  if (e.target.id === "spulen-suche") { spulenSuche = e.target.value; const l = document.getElementById("spulen-liste"); if (l) l.innerHTML = spulenListeHtml(); return; }
   if (e.target.id === "ruest-suche") { ruestSuche = e.target.value; const l = document.getElementById("ruest-liste"); if (l) l.innerHTML = ruestListeHtml(); return; }
   if (e.target.dataset && e.target.dataset.stamm && wiz) { wiz.stamm[e.target.dataset.stamm] = e.target.value; return; }
   if (e.target.classList && e.target.classList.contains("wiz-eigen") && wiz) { wiz.werte[e.target.dataset.feld] = e.target.value; return; }
@@ -1116,6 +1128,10 @@ function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("sp
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "2.2": [
+    "Spulen: Suchfeld für die Auftragsnummer",
+    "Behoben: nach dem Fehler-Knopf blieb man beim Tab-Wechsel hängen",
+  ],
   "2.1": [
     "Android: eigener Knopf zum Installieren auf dem Startbildschirm",
   ],
