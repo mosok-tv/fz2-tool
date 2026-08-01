@@ -149,6 +149,8 @@ button { font-family: inherit; cursor: pointer; }
 .punkt.ok .p-box { background: var(--green); border-color: var(--green); }
 .punkt.ok .p-name { text-decoration: line-through; color: #5b8a63; }
 .v-zeile { display: flex; justify-content: space-between; gap: 10px; font-size: .85rem; padding: 3px 0; }
+.rz-vers { display: inline-block; font-size: .72rem; color: var(--grau); background: #f0f3f6; border: 1px solid var(--linie); border-radius: 20px; padding: 1px 8px; margin-left: 4px; }
+.alt-wert { color: #b0392b; text-decoration: line-through; }
 .zwei { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
 .schmal { max-width: 220px; }
 

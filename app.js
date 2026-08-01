@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.7";
+const APP_VERSION = "1.8";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -148,14 +148,15 @@ window.addEventListener("error", e => logFehler("Programmfehler", e.message, (e.
 window.addEventListener("unhandledrejection", e => logFehler("Programmfehler", (e.reason && e.reason.message) || e.reason, e.reason && e.reason.stack));
 
 /* ---------- Router ---------- */
-const state = { view: "maschinen", maschine: null, overlay: null, rezept: null, rezeptForm: null, verlauf: null };
+const state = { view: "maschinen", maschine: null, overlay: null, rezept: null, rezeptForm: null, verlauf: null, vergleich: null };
 let spModus = "summe";  // Berechnungsart der Vorzüge: "summe" | "kleinster"
+let ruestSuche = "";    // Suchbegriff im Rüsten-Bereich
 let spEditId = null;    // gesetzt, wenn eine gespeicherte Berechnung bearbeitet wird
 const inhalt = document.getElementById("inhalt");
 const titel = document.getElementById("kopf-titel");
 
 function zeige(view) {
-  state.view = view; state.maschine = null; state.rezept = null; state.rezeptForm = null; state.verlauf = null;
+  state.view = view; state.maschine = null; state.rezept = null; state.rezeptForm = null; state.verlauf = null; state.vergleich = null;
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("aktiv", t.dataset.view === view));
   render();
   window.scrollTo(0, 0);
@@ -165,6 +166,7 @@ function render() {
   if (state.view === "maschinen" && state.maschine) return renderMaschineDetail();
   if (state.view === "ruesten") {
     if (state.rezeptForm) return renderRezeptForm();
+    if (state.vergleich) return renderRezeptVergleich();
     if (state.verlauf) return renderVerlauf();
     if (state.rezept) return renderRuestCheck();
     return renderRuesten();
@@ -415,25 +417,31 @@ function editSpule(id) {
 }
 
 /* ---------- Ansicht: Rüsten (Draht-Rezepte + Checkliste) ---------- */
-function renderRuesten() {
-  titel.textContent = "Rüsten";
-  const rz = rezepte();
-  const liste = rz.length ? rz.slice().reverse().map(r => {
+function ruestListeHtml() {
+  const q = ruestSuche.trim().toLowerCase();
+  const rz = rezepte().slice().reverse().filter(r => !q ||
+    [r.kuerzel, r.aufbau, r.klartext, r.maschine, r.beispiel_auftrag].join(" ").toLowerCase().indexOf(q) !== -1);
+  if (!rz.length) return `<div class="leer">${ruestSuche ? "Kein Muster gefunden." : "Noch kein Draht-Rezept angelegt."}</div>`;
+  return rz.map(r => {
     const soll = r.soll || {}, status = r.ruest_status || {};
     const g = Object.keys(soll).filter(k => soll[k] !== "").length;
     const ok = Object.values(status).filter(s => s && s.erledigt).length;
     const badge = ok > 0 ? `<span class="rz-fort">${ok}/${g} gerüstet</span>` : "";
+    const vers = (r.historie && r.historie.length) ? `<span class="rz-vers">${r.historie.length + 1} Stände</span>` : "";
     return `<div class="eintrag rz-eintrag" data-rezept="${r.id}">
-      <div><b>${esc(r.kuerzel)}</b> · ${esc(r.aufbau)} ${badge}</div>
-      <div class="meta">${esc(r.klartext || "")}${r.maschine ? " · " + esc(r.maschine) : ""}</div>
+      <div><b>${esc(r.kuerzel)}</b> · ${esc(r.aufbau)} ${badge} ${vers}</div>
+      <div class="meta">${esc(r.klartext || "")}${r.maschine ? " · " + esc(r.maschine) : ""}${r.beispiel_auftrag ? " · Auftrag " + esc(r.beispiel_auftrag) : ""}</div>
     </div>`;
-  }).join("") : `<div class="leer">Noch kein Draht-Rezept angelegt.</div>`;
+  }).join("");
+}
+function renderRuesten() {
+  titel.textContent = "Rüsten";
   inhalt.innerHTML = `
     <div class="karte">
-      <p class="hinweis" style="margin-top:0">Draht-Typ wählen, um die Maschine einzurichten und die Werte abzuhaken – oder ein neues Rezept anlegen.</p>
-      <button class="btn" data-rezept-neu="1">+ Neues Draht-Rezept</button>
+      <input type="text" id="ruest-suche" placeholder="Suchen: Kürzel, Aufbau, Maschine, Auftrag …" value="${esc(ruestSuche)}">
+      <button class="btn" data-rezept-neu="1" style="margin-top:10px">+ Neues Draht-Rezept</button>
     </div>
-    <div class="karte"><h2>Draht-Rezepte</h2>${liste}</div>`;
+    <div class="karte"><h2>Muster</h2><div id="ruest-liste">${ruestListeHtml()}</div></div>`;
 }
 
 function renderRezeptForm() {
@@ -494,7 +502,8 @@ function renderRuestCheck() {
       ${punkte || '<div class="leer">Keine Werte hinterlegt. Rezept bearbeiten und Sollwerte eintragen.</div>'}</div>
     <div class="karte" style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-klein" data-rezept-bearbeiten="${r.id}">Rezept bearbeiten</button>
-      <button class="btn btn-klein btn-grau" data-verlauf="${r.id}">Verlauf</button>
+      <button class="btn btn-klein btn-grau" data-vergleich="${r.id}">Änderungen</button>
+      <button class="btn btn-klein btn-grau" data-verlauf="${r.id}">Rüst-Verlauf</button>
       ${g > 0 ? `<button class="btn btn-klein" data-ruest-abschluss="${r.id}">Rüstung abschließen</button>` : ""}
     </div>`;
 }
@@ -515,6 +524,43 @@ function renderVerlauf() {
     <div class="karte" style="margin-top:12px"><h2>${r ? esc(r.kuerzel + " " + r.aufbau) : "Verlauf"} – frühere Rüstungen</h2>${liste}</div>`;
 }
 
+function diffFelder(alt, neu) {
+  const meta = [["kuerzel", "Kürzel"], ["aufbau", "Aufbau"], ["klartext", "Klartext"], ["maschine", "Maschine"], ["beispiel_auftrag", "Auftrag"]];
+  const aend = [];
+  meta.forEach(mm => { const f = mm[0]; if ((alt[f] || "") !== (neu[f] || "")) aend.push({ feld: mm[1], alt: alt[f] || "–", neu: neu[f] || "–" }); });
+  const keys = Array.from(new Set(Object.keys(alt.soll || {}).concat(Object.keys(neu.soll || {}))));
+  keys.forEach(k => { const a = (alt.soll || {})[k] || "", n = (neu.soll || {})[k] || ""; if (a !== n) aend.push({ feld: k, alt: a || "–", neu: n || "–" }); });
+  return aend;
+}
+function renderRezeptVergleich() {
+  const r = rezepte().find(x => x.id === state.vergleich);
+  if (!r) { state.vergleich = null; return render(); }
+  titel.textContent = "Änderungen";
+  const historie = r.historie || [];
+  const aktuell = { soll: r.soll, kuerzel: r.kuerzel, aufbau: r.aufbau, klartext: r.klartext, maschine: r.maschine, beispiel_auftrag: r.beispiel_auftrag, stand_vom: r.geaendert_am || r.created_at, istAktuell: true };
+  const staende = historie.concat([aktuell]);
+  let html;
+  if (staende.length < 2) {
+    html = `<div class="leer">Noch keine Änderung – nur der ursprüngliche Stand vom ${esc(aktuell.stand_vom)}.</div>`;
+  } else {
+    const bloecke = [];
+    for (let i = staende.length - 1; i >= 1; i--) {
+      const neu = staende[i], alt = staende[i - 1];
+      const aend = diffFelder(alt, neu);
+      const zeilen = aend.map(a => `<div class="v-zeile"><span>${esc(a.feld)}</span><span><span class="alt-wert">${esc(a.alt)}</span> → <b>${esc(a.neu)}</b></span></div>`).join("");
+      bloecke.push(`<div class="eintrag"><div><b>Geändert am ${esc(neu.stand_vom || "?")}</b>${neu.istAktuell ? " · aktueller Stand" : ""}</div>${zeilen || '<div class="meta">keine Wertänderung</div>'}</div>`);
+    }
+    html = bloecke.join("");
+  }
+  inhalt.innerHTML = `
+    <button class="btn btn-grau btn-klein" data-vergleich-zurueck="${r.id}">‹ Zurück</button>
+    <div class="karte" style="margin-top:12px">
+      <h2>${esc(r.kuerzel + " " + r.aufbau)} – Änderungsverlauf</h2>
+      <p class="hinweis" style="margin-top:0">${staende.length} ${staende.length === 1 ? "Stand" : "Stände"} gespeichert. Jeder Block zeigt, was sich geändert hat.</p>
+      ${html}
+    </div>`;
+}
+
 function speichereRezept() {
   const kuerzel = document.getElementById("rz-kuerzel").value.trim();
   const aufbau = document.getElementById("rz-aufbau").value.trim();
@@ -532,9 +578,19 @@ function speichereRezept() {
   const id = state.rezeptForm;
   if (id !== "neu") {
     const r = list.find(x => x.id === id);
-    if (r) { Object.assign(r, daten); }
+    if (r) {
+      const alt = { soll: r.soll, kuerzel: r.kuerzel, aufbau: r.aufbau, klartext: r.klartext, maschine: r.maschine, beispiel_auftrag: r.beispiel_auftrag };
+      const neu = { soll: daten.soll, kuerzel: daten.kuerzel, aufbau: daten.aufbau, klartext: daten.klartext, maschine: daten.maschine, beispiel_auftrag: daten.beispiel_auftrag };
+      if (JSON.stringify(alt) !== JSON.stringify(neu)) {
+        // nur bei echter Änderung: alten Stand in die Historie sichern
+        if (!r.historie) r.historie = [];
+        r.historie.push(Object.assign({}, alt, { stand_vom: r.geaendert_am || r.created_at }));
+        Object.assign(r, daten);
+        r.geaendert_am = jetzt();
+      }
+    }
   } else {
-    list.push({ id: neueId(), ...daten, ruest_status: {}, created_at: jetzt() });
+    list.push({ id: neueId(), ...daten, ruest_status: {}, historie: [], created_at: jetzt(), geaendert_am: jetzt() });
   }
   DB.set("rezepte", list);
   state.rezeptForm = null;
@@ -774,7 +830,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-verlauf],[data-verlauf-zurueck],[data-check],[data-ruest-abschluss],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -798,6 +854,8 @@ document.addEventListener("click", e => {
   else if (el.dataset.rezeptBearbeiten) { state.rezeptForm = el.dataset.rezeptBearbeiten; render(); window.scrollTo(0, 0); }
   else if (el.dataset.verlauf) { state.verlauf = el.dataset.verlauf; state.rezept = null; render(); window.scrollTo(0, 0); }
   else if (el.dataset.verlaufZurueck) { state.verlauf = null; state.rezept = el.dataset.verlaufZurueck; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.vergleich) { state.vergleich = el.dataset.vergleich; state.rezept = null; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.vergleichZurueck) { state.vergleich = null; state.rezept = el.dataset.vergleichZurueck; render(); window.scrollTo(0, 0); }
   else if (el.dataset.check) { if (!e.target.classList.contains("p-ist")) toggleCheck(el.dataset.check); }
   else if (el.dataset.ruestAbschluss) ruestAbschluss(el.dataset.ruestAbschluss);
   else if (el.dataset.gUebernehmen) { const g = gErmittelt(); if (g > 0) { document.getElementById("sp-g").value = fmt(g, 4); spRechne(); flash("G übernommen: " + fmt(g, 4) + " kg/km"); } else flash("Erst Gewicht und Länge der Spule eingeben."); }
@@ -814,6 +872,7 @@ document.addEventListener("click", e => {
 document.getElementById("fehler-knopf").addEventListener("click", () => { state.overlay = "fehler"; render(); window.scrollTo(0, 0); });
 document.getElementById("wochen-banner").addEventListener("click", wochenberichtMail);
 document.addEventListener("input", e => {
+  if (e.target.id === "ruest-suche") { ruestSuche = e.target.value; const l = document.getElementById("ruest-liste"); if (l) l.innerHTML = ruestListeHtml(); return; }
   if (e.target.dataset && e.target.dataset.ist) { setzeIst(e.target.dataset.ist, e.target.value); return; }
   if (e.target.closest("#inhalt") && state.view === "spulen") spRechne();
 });
@@ -844,6 +903,11 @@ function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("sp
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "1.8": [
+    "Rüsten: Suche über alle Muster (Kürzel, Aufbau, Maschine, Auftrag)",
+    "Änderungen an Mustern werden als Verlauf gespeichert (nichts geht verloren)",
+    "Änderungsvergleich: sehen, was sich wann geändert hat (alt → neu)",
+  ],
   "1.7": [
     "Echte Verschlüsselung: mit Code werden alle Daten verschlüsselt gespeichert",
     "Ohne Code sind die Daten nicht lesbar – auch bei Gerätezugriff",
