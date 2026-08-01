@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.8";
+const APP_VERSION = "1.9";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -444,35 +444,114 @@ function renderRuesten() {
     <div class="karte"><h2>Muster</h2><div id="ruest-liste">${ruestListeHtml()}</div></div>`;
 }
 
+/* Assistent zum Anlegen/Ändern eines Musters – Schritt für Schritt, Werte antippen statt tippen */
+let wiz = null;   // { phase: "start"|"vorlage"|"schritte", schritt, werte:{}, stamm:{} }
+
+function wizStart(id) {
+  if (id === "neu") {
+    wiz = { phase: "start", schritt: 0, werte: {}, stamm: {} };
+  } else {
+    const r = rezepte().find(x => x.id === id) || {};
+    wiz = { phase: "schritte", schritt: 0, werte: Object.assign({}, r.soll || {}),
+      stamm: { kuerzel: r.kuerzel || "", aufbau: r.aufbau || "", klartext: r.klartext || "",
+               maschine: r.maschine || "", beispiel_auftrag: r.beispiel_auftrag || "" } };
+  }
+}
+
 function renderRezeptForm() {
-  const id = state.rezeptForm;
-  const r = (id !== "neu") ? rezepte().find(x => x.id === id) : null;
-  titel.textContent = r ? "Rezept bearbeiten" : "Neues Rezept";
-  const gv = f => (r && r.soll && r.soll[f.name] != null) ? esc(r.soll[f.name]) : "";
-  const felderHtml = EINSTELLFELDER.map(grp => `
-    <div class="rz-gruppe">${grp.gruppe}</div>
-    ${grp.felder.map(f => `<div class="rz-feld"><label>${esc(f.name)}${f.einheit ? ` <span style="color:var(--grau)">(${f.einheit})</span>` : ""}</label>
-      <input type="text" class="rz-soll" data-feld="${esc(f.name)}" value="${gv(f)}" placeholder="Sollwert"></div>`).join("")}`).join("");
+  if (!wiz) wizStart(state.rezeptForm);
+  if (wiz.phase === "start") return renderWizStart();
+  if (wiz.phase === "vorlage") return renderWizVorlage();
+  return renderWizSchritt();
+}
+
+function renderWizStart() {
+  titel.textContent = "Neues Muster";
+  const gibtVorlagen = rezepte().length > 0;
   inhalt.innerHTML = `
     <button class="btn btn-grau btn-klein" data-rezept-zurueck="1">‹ Zurück</button>
     <div class="karte" style="margin-top:12px">
-      <h2>Draht-Typ</h2>
+      <h2>Wie möchtest du anfangen?</h2>
+      ${gibtVorlagen ? `<button class="grossbtn" data-wiz-vorlage="1">Wie ein vorhandenes Muster
+        <small>Alles wird übernommen – du änderst nur, was anders ist.</small></button>` : ""}
+      <button class="grossbtn" data-wiz-leer="1">Ganz neu anlegen
+        <small>${gibtVorlagen ? "Nur nötig, wenn es nichts Ähnliches gibt." : "Das erste Muster anlegen."}</small></button>
+    </div>`;
+}
+
+function renderWizVorlage() {
+  titel.textContent = "Vorlage wählen";
+  const liste = rezepte().slice().reverse().map(r =>
+    `<button class="grossbtn" data-wiz-kopie="${r.id}">${esc(r.kuerzel)} · ${esc(r.aufbau)}
+      <small>${esc(r.klartext || "")}${r.maschine ? " · " + esc(r.maschine) : ""}</small></button>`).join("");
+  inhalt.innerHTML = `
+    <button class="btn btn-grau btn-klein" data-wiz-zurueck-start="1">‹ Zurück</button>
+    <div class="karte" style="margin-top:12px"><h2>Welches Muster ist ähnlich?</h2>${liste}</div>`;
+}
+
+function renderWizSchritt() {
+  const gesamt = EINSTELLFELDER.length + 1;   // Schritt 0 = Draht-Typ, dann die Gruppen
+  const s = wiz.schritt;
+  titel.textContent = state.rezeptForm === "neu" ? "Neues Muster" : "Muster ändern";
+  const punkte = Array.from({ length: gesamt }, (_, i) => `<div class="wpunkt ${i <= s ? "an" : ""}"></div>`).join("");
+  const kopf = `<div class="wschritte">${punkte}</div>
+    <div class="wschritt-text">Schritt ${s + 1} von ${gesamt}</div>`;
+
+  let inhaltHtml, gruppenName;
+  if (s === 0) {
+    gruppenName = "Draht-Typ";
+    const st = wiz.stamm;
+    inhaltHtml = `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div><label>Kurzbezeichnung</label><input type="text" id="rz-kuerzel" value="${r ? esc(r.kuerzel) : ""}" placeholder="z. B. VSW"></div>
-        <div><label>Aufbau</label><input type="text" id="rz-aufbau" value="${r ? esc(r.aufbau) : ""}" placeholder="z. B. 6×0,050"></div>
+        <div><label>Kurzbezeichnung</label><input type="text" class="wiz-stamm" data-stamm="kuerzel" value="${esc(st.kuerzel)}" placeholder="z. B. VSW"></div>
+        <div><label>Aufbau</label><input type="text" class="wiz-stamm" data-stamm="aufbau" value="${esc(st.aufbau)}" placeholder="z. B. 6×0,050"></div>
       </div>
-      <label>Klartext</label><input type="text" id="rz-klartext" value="${r ? esc(r.klartext || "") : ""}" placeholder="z. B. versilbert weich">
+      <label>Klartext</label><input type="text" class="wiz-stamm" data-stamm="klartext" value="${esc(st.klartext)}" placeholder="z. B. versilbert weich">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div><label>Maschine</label><input type="text" id="rz-maschine" value="${r ? esc(r.maschine || "") : ""}" placeholder="z. B. Z49"></div>
-        <div><label>Beispiel-Auftrag</label><input type="text" id="rz-auftrag" value="${r ? esc(r.beispiel_auftrag || "") : ""}"></div>
-      </div>
-    </div>
+        <div><label>Maschine</label><input type="text" class="wiz-stamm" data-stamm="maschine" value="${esc(st.maschine)}" placeholder="z. B. Z49"></div>
+        <div><label>Auftrag</label><input type="text" class="wiz-stamm" data-stamm="beispiel_auftrag" value="${esc(st.beispiel_auftrag)}"></div>
+      </div>`;
+  } else {
+    const g = EINSTELLFELDER[s - 1];
+    gruppenName = g.gruppe;
+    inhaltHtml = g.felder.map((f, idx) => {
+      const gewaehlt = wiz.werte[f.name] || "";
+      const vorschlaege = vorhandeneWerte(f.name);
+      const chips = vorschlaege.map(w =>
+        `<button type="button" class="wchip ${gewaehlt === w ? "aktiv" : ""}" data-wiz-wert="${esc(f.name)}" data-wert="${esc(w)}">${esc(w)}</button>`).join("");
+      const eigener = (gewaehlt && vorschlaege.indexOf(gewaehlt) === -1) ? gewaehlt : "";
+      return `<div class="wfeld">
+        <div class="wfrage">${esc(f.name)} ${f.einheit ? `<span class="weinheit">(${f.einheit})</span>` : ""}</div>
+        <div class="wchips">${chips}<button type="button" class="wchip anderer" data-wiz-eigen="${idx}">anderer Wert…</button></div>
+        <div class="weigen ${eigener ? "zeigen" : ""}" id="weigen-${idx}">
+          <input type="text" inputmode="decimal" class="wiz-eigen" data-feld="${esc(f.name)}" value="${esc(eigener)}" placeholder="Wert eintippen">
+        </div>
+      </div>`;
+    }).join("");
+  }
+
+  const letzter = (s === gesamt - 1);
+  inhalt.innerHTML = `
     <div class="karte">
-      <h2>Einzustellende Werte</h2>
-      <p class="hinweis" style="margin-top:0">Nur ausfüllen, was relevant ist – leere Felder erscheinen nicht in der Checkliste.</p>
-      ${felderHtml}
-    </div>
-    <div class="karte"><button class="btn" data-rezept-speichern="1">Rezept speichern</button></div>`;
+      ${kopf}
+      <h2>${esc(gruppenName)}</h2>
+      ${inhaltHtml}
+      <div class="wnav">
+        <button class="btn btn-grau" data-wiz-zurueck="1">Zurück</button>
+        <button class="btn ${letzter ? "btn-gruen" : ""}" data-wiz-weiter="1">${letzter ? "Fertig" : "Weiter"}</button>
+      </div>
+    </div>`;
+}
+
+function wizWeiter() {
+  const gesamt = EINSTELLFELDER.length + 1;
+  if (wiz.schritt < gesamt - 1) { wiz.schritt++; render(); window.scrollTo(0, 0); }
+  else speichereRezept();
+}
+function wizZurueck() {
+  if (wiz.schritt > 0) { wiz.schritt--; render(); window.scrollTo(0, 0); }
+  else if (state.rezeptForm === "neu") { wiz.phase = "start"; render(); window.scrollTo(0, 0); }
+  else { wiz = null; state.rezeptForm = null; render(); window.scrollTo(0, 0); }
 }
 
 function renderRuestCheck() {
@@ -524,6 +603,17 @@ function renderVerlauf() {
     <div class="karte" style="margin-top:12px"><h2>${r ? esc(r.kuerzel + " " + r.aufbau) : "Verlauf"} – frühere Rüstungen</h2>${liste}</div>`;
 }
 
+// Werte, die für dieses Feld schon benutzt wurden – häufigste zuerst (für die Auswahlknöpfe)
+function vorhandeneWerte(feldName) {
+  const zaehler = {};
+  rezepte().forEach(r => {
+    const v = (r.soll || {})[feldName];
+    if (v) zaehler[v] = (zaehler[v] || 0) + 1;
+    (r.historie || []).forEach(h => { const hv = (h.soll || {})[feldName]; if (hv) zaehler[hv] = (zaehler[hv] || 0) + 1; });
+  });
+  return Object.keys(zaehler).sort((a, b) => zaehler[b] - zaehler[a]).slice(0, 6);
+}
+
 function diffFelder(alt, neu) {
   const meta = [["kuerzel", "Kürzel"], ["aufbau", "Aufbau"], ["klartext", "Klartext"], ["maschine", "Maschine"], ["beispiel_auftrag", "Auftrag"]];
   const aend = [];
@@ -562,16 +652,19 @@ function renderRezeptVergleich() {
 }
 
 function speichereRezept() {
-  const kuerzel = document.getElementById("rz-kuerzel").value.trim();
-  const aufbau = document.getElementById("rz-aufbau").value.trim();
-  if (!kuerzel && !aufbau) return flash("Kurzbezeichnung oder Aufbau angeben.");
+  const st = wiz.stamm;
+  const kuerzel = (st.kuerzel || "").trim(), aufbau = (st.aufbau || "").trim();
+  if (!kuerzel && !aufbau) {
+    wiz.schritt = 0; render(); window.scrollTo(0, 0);
+    return flash("Bitte Kurzbezeichnung oder Aufbau angeben.");
+  }
   const soll = {};
-  document.querySelectorAll(".rz-soll").forEach(el => { const v = el.value.trim(); if (v) soll[el.dataset.feld] = v; });
+  Object.keys(wiz.werte).forEach(k => { const v = String(wiz.werte[k] || "").trim(); if (v) soll[k] = v; });
   const daten = {
     kuerzel: kuerzel, aufbau: aufbau,
-    klartext: document.getElementById("rz-klartext").value.trim(),
-    maschine: document.getElementById("rz-maschine").value.trim(),
-    beispiel_auftrag: document.getElementById("rz-auftrag").value.trim(),
+    klartext: (st.klartext || "").trim(),
+    maschine: (st.maschine || "").trim(),
+    beispiel_auftrag: (st.beispiel_auftrag || "").trim(),
     soll: soll,
   };
   const list = rezepte();
@@ -593,8 +686,8 @@ function speichereRezept() {
     list.push({ id: neueId(), ...daten, ruest_status: {}, historie: [], created_at: jetzt(), geaendert_am: jetzt() });
   }
   DB.set("rezepte", list);
-  state.rezeptForm = null;
-  flash("Rezept gespeichert."); render(); window.scrollTo(0, 0);
+  state.rezeptForm = null; wiz = null;
+  flash("Muster gespeichert."); render(); window.scrollTo(0, 0);
 }
 
 function toggleCheck(feld) {
@@ -646,6 +739,12 @@ function renderMehr() {
       <div class="label" style="margin-top:14px">Sicherung wiederherstellen</div>
       <input type="file" id="import-file" accept="application/json,.json">
       <button class="btn btn-grau" data-import="1" style="margin-top:10px">Aus Datei einlesen</button>
+    </div>
+    <div class="karte">
+      <h2>Darstellung</h2>
+      <p class="hinweis" style="margin-top:0">Größere Schrift und größere Knöpfe – gut für die Halle.</p>
+      <button class="btn ${DB.get("grossschrift", false) ? "" : "btn-grau"}" data-grossschrift="1">
+        Große Schrift: ${DB.get("grossschrift", false) ? "AN" : "AUS"}</button>
     </div>
     <div class="karte">
       <h2>Verschlüsselung &amp; Code</h2>
@@ -830,7 +929,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -847,11 +946,34 @@ document.addEventListener("click", e => {
   else if (el.dataset.saveSpule) speichereSpule();
   else if (el.dataset.editSpule) editSpule(el.dataset.editSpule);
   else if (el.dataset.delSpule) delSpule(el.dataset.delSpule);
-  else if (el.dataset.rezeptNeu) { state.rezeptForm = "neu"; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.rezeptNeu) { state.rezeptForm = "neu"; wizStart("neu"); render(); window.scrollTo(0, 0); }
+  else if (el.dataset.wizVorlage) { wiz.phase = "vorlage"; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.wizLeer) { wiz.phase = "schritte"; wiz.schritt = 0; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.wizZurueckStart) { wiz.phase = "start"; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.wizKopie) {
+    const q = rezepte().find(x => x.id === el.dataset.wizKopie);
+    if (q) {
+      wiz.werte = Object.assign({}, q.soll || {});
+      wiz.stamm = { kuerzel: q.kuerzel || "", aufbau: q.aufbau || "", klartext: q.klartext || "",
+                    maschine: q.maschine || "", beispiel_auftrag: "" };  // Auftrag bewusst leer
+    }
+    wiz.phase = "schritte"; wiz.schritt = 0; render(); window.scrollTo(0, 0);
+  }
+  else if (el.dataset.wizWeiter) wizWeiter();
+  else if (el.dataset.wizZurueck) wizZurueck();
+  else if (el.dataset.wizWert) {
+    const feld = el.dataset.wizWert;
+    wiz.werte[feld] = (wiz.werte[feld] === el.dataset.wert) ? "" : el.dataset.wert;  // nochmal tippen = abwählen
+    render();
+  }
+  else if (el.dataset.wizEigen) {
+    const box = document.getElementById("weigen-" + el.dataset.wizEigen);
+    if (box) { box.classList.add("zeigen"); const i = box.querySelector("input"); if (i) i.focus(); }
+  }
   else if (el.dataset.rezept) { state.rezept = el.dataset.rezept; render(); window.scrollTo(0, 0); }
-  else if (el.dataset.rezeptZurueck) { state.rezeptForm = null; state.rezept = null; state.verlauf = null; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.rezeptZurueck) { state.rezeptForm = null; wiz = null; state.rezept = null; state.verlauf = null; render(); window.scrollTo(0, 0); }
   else if (el.dataset.rezeptSpeichern) speichereRezept();
-  else if (el.dataset.rezeptBearbeiten) { state.rezeptForm = el.dataset.rezeptBearbeiten; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.rezeptBearbeiten) { state.rezeptForm = el.dataset.rezeptBearbeiten; wizStart(el.dataset.rezeptBearbeiten); render(); window.scrollTo(0, 0); }
   else if (el.dataset.verlauf) { state.verlauf = el.dataset.verlauf; state.rezept = null; render(); window.scrollTo(0, 0); }
   else if (el.dataset.verlaufZurueck) { state.verlauf = null; state.rezept = el.dataset.verlaufZurueck; render(); window.scrollTo(0, 0); }
   else if (el.dataset.vergleich) { state.vergleich = el.dataset.vergleich; state.rezept = null; render(); window.scrollTo(0, 0); }
@@ -861,6 +983,12 @@ document.addEventListener("click", e => {
   else if (el.dataset.gUebernehmen) { const g = gErmittelt(); if (g > 0) { document.getElementById("sp-g").value = fmt(g, 4); spRechne(); flash("G übernommen: " + fmt(g, 4) + " kg/km"); } else flash("Erst Gewicht und Länge der Spule eingeben."); }
   else if (el.dataset.export) exportData();
   else if (el.dataset.import) importData();
+  else if (el.dataset.grossschrift) {
+    const an = !DB.get("grossschrift", false);
+    DB.set("grossschrift", an);
+    document.body.classList.toggle("gross", an);
+    render();
+  }
   else if (el.dataset.codeSetzen) codeSetzen();
   else if (el.dataset.codeAendern) codeAendern();
   else if (el.dataset.codeEntfernen) codeEntfernen();
@@ -873,6 +1001,8 @@ document.getElementById("fehler-knopf").addEventListener("click", () => { state.
 document.getElementById("wochen-banner").addEventListener("click", wochenberichtMail);
 document.addEventListener("input", e => {
   if (e.target.id === "ruest-suche") { ruestSuche = e.target.value; const l = document.getElementById("ruest-liste"); if (l) l.innerHTML = ruestListeHtml(); return; }
+  if (e.target.dataset && e.target.dataset.stamm && wiz) { wiz.stamm[e.target.dataset.stamm] = e.target.value; return; }
+  if (e.target.classList && e.target.classList.contains("wiz-eigen") && wiz) { wiz.werte[e.target.dataset.feld] = e.target.value; return; }
   if (e.target.dataset && e.target.dataset.ist) { setzeIst(e.target.dataset.ist, e.target.value); return; }
   if (e.target.closest("#inhalt") && state.view === "spulen") spRechne();
 });
@@ -903,6 +1033,12 @@ function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("sp
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "1.9": [
+    "Muster anlegen jetzt Schritt für Schritt statt langem Formular",
+    "Werte antippen statt eintippen – bisher benutzte Werte als große Knöpfe",
+    "Neues Muster kann von einem vorhandenen übernommen werden",
+    "Große Schrift umschaltbar (unter Mehr)",
+  ],
   "1.8": [
     "Rüsten: Suche über alle Muster (Kürzel, Aufbau, Maschine, Auftrag)",
     "Änderungen an Mustern werden als Verlauf gespeichert (nichts geht verloren)",
@@ -985,6 +1121,7 @@ async function pinHash(code) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 function starteApp() {
+  document.body.classList.toggle("gross", DB.get("grossschrift", false));
   zeige("maschinen");
   aktualisiereFehlerBadge();
   pruefeWochenbericht();

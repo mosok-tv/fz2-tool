@@ -151,6 +151,37 @@ button { font-family: inherit; cursor: pointer; }
 .v-zeile { display: flex; justify-content: space-between; gap: 10px; font-size: .85rem; padding: 3px 0; }
 .rz-vers { display: inline-block; font-size: .72rem; color: var(--grau); background: #f0f3f6; border: 1px solid var(--linie); border-radius: 20px; padding: 1px 8px; margin-left: 4px; }
 .alt-wert { color: #b0392b; text-decoration: line-through; }
+
+/* Muster-Assistent */
+.grossbtn { display: block; width: 100%; text-align: left; background: #fff; border: 2px solid var(--linie);
+  border-radius: 14px; padding: 20px 18px; margin-bottom: 12px; font-size: 1.05em; font-weight: 700;
+  color: var(--text); font-family: inherit; }
+.grossbtn small { display: block; font-weight: 400; font-size: .8em; color: var(--grau); margin-top: 5px; line-height: 1.35; }
+.grossbtn:active { background: #eef4f8; border-color: var(--blau); }
+.wschritte { display: flex; gap: 8px; margin-bottom: 6px; }
+.wpunkt { flex: 1; height: 8px; border-radius: 5px; background: #dde3e8; }
+.wpunkt.an { background: var(--green); }
+.wschritt-text { font-size: .85em; color: var(--grau); margin-bottom: 12px; }
+.wfeld { margin-bottom: 22px; }
+.wfrage { font-size: 1.05em; font-weight: 700; }
+.weinheit { font-weight: 400; color: var(--grau); font-size: .85em; }
+.wchips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.wchip { border: 2px solid var(--linie); background: #fff; border-radius: 12px; padding: 16px 20px;
+  font-size: 1.2em; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text);
+  font-family: inherit; min-width: 78px; text-align: center; }
+.wchip.aktiv { background: var(--green); border-color: var(--green); color: #fff; }
+.wchip.anderer { font-size: .88em; font-weight: 600; color: var(--blau); min-width: 0; }
+.weigen { margin-top: 10px; display: none; }
+.weigen.zeigen { display: block; }
+.weigen input { width: 100%; padding: 15px; font-size: 1.1em; text-align: right; border: 2px solid var(--blau); border-radius: 12px; }
+.wnav { display: flex; gap: 10px; margin-top: 10px; }
+.wnav .btn { flex: 1; padding: 18px; font-size: 1.05em; }
+.btn-gruen { background: var(--green); }
+
+/* Große Schrift (Einstellung) */
+body.gross { font-size: 21px; }
+body.gross .kopf-kachel { font-size: 1.5rem; padding: 26px 10px; }
+body.gross .tab { font-size: .8rem; }
 .zwei { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
 .schmal { max-width: 220px; }
 
