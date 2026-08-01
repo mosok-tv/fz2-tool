@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.2";
+const APP_VERSION = "2.3";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -866,8 +866,11 @@ function renderFehler() {
       <div class="label">Bildschirmfoto anhängen (empfohlen)</div>
       <p class="hinweis" style="margin-top:0">Am iPhone: Seitentaste + Lauter gleichzeitig drücken, dann hier auswählen.</p>
       <input type="file" id="f-foto" accept="image/*">
-      <button class="btn" data-fehler-senden="1" style="margin-top:12px">Fehlerbericht senden</button>
-      <p class="hinweis">Geht an ${esc(REPORT_MAIL)} – die Mail wird fertig ausgefüllt geöffnet, du musst nur noch auf Senden tippen.</p>
+      <button class="btn" data-fehler-senden="1" style="margin-top:12px">Per E-Mail senden</button>
+      <p class="hinweis">Die Mail an ${esc(REPORT_MAIL)} wird fertig ausgefüllt geöffnet – nur noch auf Senden tippen.</p>
+      <div class="label" style="margin-top:12px">Kein Mailprogramm? Dann so:</div>
+      <button class="btn btn-grau btn-klein" data-fehler-teilen="1">Teilen (WhatsApp, Signal …)</button>
+      <button class="btn btn-grau btn-klein" data-fehler-kopieren="1" style="margin-left:6px">Text kopieren</button>
     </div>
     <div class="karte">
       <h2>Automatisch erfasst</h2>
@@ -925,6 +928,47 @@ function berichtText(beschreibung) {
   t += "Daten: " + entries().length + " Maschinen-Einträge, " + todos().length + " Aufgaben, "
      + spulen().length + " Berechnungen, " + rezepte().length + " Muster\n";
   return t;
+}
+
+// Teilen: geht auch ohne Mailkonto (WhatsApp, Signal, Notizen …)
+async function teileFehlerbericht() {
+  const beschreibung = document.getElementById("f-text").value.trim();
+  if (!beschreibung) return flash("Bitte kurz beschreiben, was nicht stimmt.");
+  const text = "An: " + REPORT_MAIL + "\n\n" + berichtText(beschreibung);
+  const fInput = document.getElementById("f-foto");
+  try {
+    if (fInput.files && fInput.files[0] && navigator.canShare) {
+      const dataUrl = await verkleinereFoto(fInput.files[0]);
+      const bin = atob(dataUrl.split(",")[1]);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const bild = new File([arr], "bildschirm.jpg", { type: "image/jpeg" });
+      if (navigator.canShare({ files: [bild] })) {
+        await navigator.share({ files: [bild], text: text, title: "Fehler fz2-tool" });
+        return;
+      }
+    }
+    if (navigator.share) { await navigator.share({ text: text, title: "Fehler fz2-tool" }); return; }
+  } catch (e) { return; }   // Nutzer hat abgebrochen
+  kopiereFehlerbericht();    // Teilen nicht verfügbar -> kopieren
+}
+
+// Kopieren: letzter Rettungsanker, Text landet in der Zwischenablage
+async function kopiereFehlerbericht() {
+  const beschreibung = document.getElementById("f-text").value.trim();
+  if (!beschreibung) return flash("Bitte kurz beschreiben, was nicht stimmt.");
+  const text = "An: " + REPORT_MAIL + "\n\n" + berichtText(beschreibung);
+  try {
+    await navigator.clipboard.writeText(text);
+    flash("Text kopiert – irgendwo einfügen und an " + REPORT_MAIL + " schicken.");
+  } catch (e) {
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); flash("Text kopiert."); }
+    catch (e2) { flash("Kopieren nicht möglich – bitte E-Mail oder Teilen nutzen."); }
+    ta.remove();
+  }
 }
 
 async function sendeFehlerbericht() {
@@ -992,7 +1036,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -1074,6 +1118,8 @@ document.addEventListener("click", e => {
   else if (el.dataset.codeEntfernen) codeEntfernen();
   else if (el.dataset.fehlerZurueck) { state.overlay = null; render(); window.scrollTo(0, 0); }
   else if (el.dataset.fehlerSenden) sendeFehlerbericht();
+  else if (el.dataset.fehlerTeilen) teileFehlerbericht();
+  else if (el.dataset.fehlerKopieren) kopiereFehlerbericht();
   else if (el.dataset.fehlerLoeschen) { if (confirm("Fehlerliste leeren?")) { DB.set("fehler", []); aktualisiereFehlerBadge(); render(); } }
   else if (el.dataset.wochenbericht) wochenberichtMail();
 });
@@ -1128,6 +1174,10 @@ function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("sp
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "2.3": [
+    "Fehlerbericht: zusätzlich Teilen (WhatsApp usw.) und Text kopieren",
+    "So kommt der Bericht auch ohne Mailprogramm an",
+  ],
   "2.2": [
     "Spulen: Suchfeld für die Auftragsnummer",
     "Behoben: nach dem Fehler-Knopf blieb man beim Tab-Wechsel hängen",
