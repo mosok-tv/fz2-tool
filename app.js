@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6";
+const APP_VERSION = "1.7";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -14,11 +14,57 @@ const STATUS = {
   abruesten:  { label: "Abrüsten",   farbe: "violet" },
 };
 
-/* ---------- Speicher (intern im Gerät, localStorage) ---------- */
+/* ---------- Speicher: in-memory Vault (offen oder verschlüsselt) ---------- */
+let VAULT = {};          // alle Daten im Arbeitsspeicher
+let VAULT_CODE = null;   // gesetzt => wird verschlüsselt gespeichert
+let vaultBereit = false; // erst true, wenn geladen – schützt vor Überschreiben mit Leerem
 const DB = {
-  get(key, def) { try { const v = JSON.parse(localStorage.getItem("sue_" + key)); return v === null ? def : v; } catch (e) { return def; } },
-  set(key, val) { localStorage.setItem("sue_" + key, JSON.stringify(val)); },
+  get(key, def) { const v = VAULT[key]; return (v === undefined || v === null) ? def : v; },
+  set(key, val) { VAULT[key] = val; persistiereVault(); },
 };
+function b64(u8) { let s = ""; u8.forEach(b => s += String.fromCharCode(b)); return btoa(s); }
+function ub64(s) { return Uint8Array.from(atob(s), c => c.charCodeAt(0)); }
+async function leiteSchluessel(code, salt) {
+  const mat = await crypto.subtle.importKey("raw", new TextEncoder().encode(code), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt: salt, iterations: 150000, hash: "SHA-256" },
+    mat, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+async function verschluessle(obj, code) {
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await leiteSchluessel(code, salt);
+  const enc = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv }, key, new TextEncoder().encode(JSON.stringify(obj)));
+  return { v: 1, salt: b64(salt), iv: b64(iv), data: b64(new Uint8Array(enc)) };
+}
+async function entschluessle(paket, code) {
+  const key = await leiteSchluessel(code, ub64(paket.salt));
+  const dec = await crypto.subtle.decrypt({ name: "AES-GCM", iv: ub64(paket.iv) }, key, ub64(paket.data));
+  return JSON.parse(new TextDecoder().decode(dec));  // wirft bei falschem Code
+}
+let persistTimer = null;
+function persistiereVault() {
+  if (!vaultBereit) return;  // niemals vor dem Laden speichern
+  if (VAULT_CODE) {
+    clearTimeout(persistTimer);
+    persistTimer = setTimeout(() => {
+      verschluessle(VAULT, VAULT_CODE).then(p => localStorage.setItem("sue_vault_enc", JSON.stringify(p))).catch(() => {});
+    }, 60);
+  } else {
+    localStorage.setItem("sue_vault", JSON.stringify(VAULT));
+  }
+}
+function ladePlainVault() {
+  const plain = localStorage.getItem("sue_vault");
+  if (plain) { try { return JSON.parse(plain); } catch (e) {} }
+  // Migration aus einzelnen Keys älterer Versionen
+  const v = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.indexOf("sue_") === 0 && k !== "sue_vault" && k !== "sue_vault_enc") {
+      try { v[k.slice(4)] = JSON.parse(localStorage.getItem(k)); } catch (e) {}
+    }
+  }
+  return v;
+}
 function entries() { return DB.get("entries", []); }
 function todos()   { return DB.get("todos", []); }
 function spulen()  { return DB.get("spulen", []); }
@@ -546,14 +592,15 @@ function renderMehr() {
       <button class="btn btn-grau" data-import="1" style="margin-top:10px">Aus Datei einlesen</button>
     </div>
     <div class="karte">
-      <h2>Zugangscode</h2>
-      ${DB.get("pin_hash", null)
-        ? `<p class="hinweis" style="margin-top:0">Die App ist mit einem Code gesperrt. Beim Öffnen muss er eingegeben werden.</p>
+      <h2>Verschlüsselung &amp; Code</h2>
+      ${VAULT_CODE
+        ? `<p class="hinweis" style="margin-top:0">✓ Die Daten sind <b>verschlüsselt</b>. Beim Öffnen muss der Code eingegeben werden – ohne ihn sind die Daten nicht lesbar.</p>
            <button class="btn btn-grau" data-code-aendern="1">Code ändern</button>
-           <button class="btn btn-grau btn-klein" data-code-entfernen="1" style="margin-top:8px">Code entfernen</button>`
-        : `<p class="hinweis" style="margin-top:0">Noch kein Code. Mit einem Code sieht niemand die Daten, der das Gerät in die Hand bekommt.</p>
-           <input type="password" id="code-neu" inputmode="numeric" maxlength="12" placeholder="Neuer Code (Zahlen)">
-           <button class="btn" data-code-setzen="1" style="margin-top:10px">Code festlegen</button>`}
+           <button class="btn btn-grau btn-klein" data-code-entfernen="1" style="margin-top:8px">Verschlüsselung entfernen</button>`
+        : `<p class="hinweis" style="margin-top:0">Die Daten liegen aktuell <b>unverschlüsselt</b> auf dem Gerät. Mit einem Code werden sie verschlüsselt – niemand ohne Code kommt dann heran.</p>
+           <input type="password" id="code-neu" inputmode="numeric" maxlength="12" placeholder="Code festlegen (Zahlen)">
+           <button class="btn" data-code-setzen="1" style="margin-top:10px">Verschlüsselung aktivieren</button>
+           <p class="hinweis">Vorher unbedingt eine Sicherung machen und den Code sicher notieren – Code weg = Daten weg.</p>`}
     </div>
     <div class="karte">
       <h2>Info</h2>
@@ -565,20 +612,26 @@ function renderMehr() {
 async function codeSetzen() {
   const code = document.getElementById("code-neu").value.trim();
   if (code.length < 4) return flash("Bitte mindestens 4 Zeichen.");
-  DB.set("pin_hash", await pinHash(code));
-  flash("Code gesetzt – ab dem nächsten Start aktiv."); render();
+  if (!confirm("Verschlüsselung aktivieren?\n\nWICHTIG: Ohne diesen Code sind die Daten NICHT mehr lesbar. Notiere ihn sicher und mach vorher eine Sicherung (Datei-Sicherung oben).")) return;
+  VAULT_CODE = code;
+  localStorage.setItem("sue_vault_enc", JSON.stringify(await verschluessle(VAULT, code)));
+  raeumeAltePlainKeys();
+  flash("Verschlüsselung aktiv."); render();
 }
 async function codeAendern() {
-  const code = (prompt("Neuen Code eingeben (mind. 4 Zeichen):") || "").trim();
+  const code = (prompt("Neuer Code (mind. 4 Zeichen):") || "").trim();
   if (!code) return;
   if (code.length < 4) return flash("Bitte mindestens 4 Zeichen.");
-  DB.set("pin_hash", await pinHash(code));
+  VAULT_CODE = code;
+  localStorage.setItem("sue_vault_enc", JSON.stringify(await verschluessle(VAULT, code)));
   flash("Code geändert.");
 }
-function codeEntfernen() {
-  if (!confirm("Zugangscode entfernen? Die App ist dann ohne Code offen.")) return;
-  localStorage.removeItem("sue_pin_hash");
-  flash("Code entfernt."); render();
+async function codeEntfernen() {
+  if (!confirm("Verschlüsselung entfernen? Die Daten liegen dann unverschlüsselt auf dem Gerät.")) return;
+  VAULT_CODE = null;
+  localStorage.removeItem("sue_vault_enc");
+  localStorage.setItem("sue_vault", JSON.stringify(VAULT));
+  flash("Verschlüsselung entfernt."); render();
 }
 
 function exportData() {
@@ -791,6 +844,11 @@ function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("sp
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "1.7": [
+    "Echte Verschlüsselung: mit Code werden alle Daten verschlüsselt gespeichert",
+    "Ohne Code sind die Daten nicht lesbar – auch bei Gerätezugriff",
+    "Wichtig: Code sicher notieren und Sicherung machen (Code weg = Daten weg)",
+  ],
   "1.6": [
     "Zugangscode: App kann mit einem Code gesperrt werden (unter Mehr)",
     "Schützt die Daten, wenn das Gerät in fremde Hände gerät",
@@ -868,26 +926,50 @@ function starteApp() {
   pruefeWochenbericht();
   zeigeWasNeu();
 }
+function raeumeAltePlainKeys() {
+  const weg = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.indexOf("sue_") === 0 && k !== "sue_vault_enc") weg.push(k);
+  }
+  weg.forEach(k => localStorage.removeItem(k));
+}
 async function entsperren() {
   const code = document.getElementById("sperre-code").value;
-  const hash = DB.get("pin_hash", null);
-  if (code && await pinHash(code) === hash) {
+  if (!code) return;
+  const encRaw = localStorage.getItem("sue_vault_enc");
+  try {
+    if (encRaw) {
+      VAULT = await entschluessle(JSON.parse(encRaw), code);   // wirft bei falschem Code
+      VAULT_CODE = code; vaultBereit = true;
+    } else {
+      // Übergang von der alten Code-Sperre: Code prüfen, dann Daten verschlüsseln
+      const plain = ladePlainVault();
+      if (plain.pin_hash && await pinHash(code) !== plain.pin_hash) throw new Error("falsch");
+      delete plain.pin_hash;
+      VAULT = plain; VAULT_CODE = code; vaultBereit = true;
+      localStorage.setItem("sue_vault_enc", JSON.stringify(await verschluessle(VAULT, code)));
+      raeumeAltePlainKeys();
+    }
     document.getElementById("sperre").hidden = true;
     document.getElementById("sperre-code").value = "";
+    document.getElementById("sperre-fehler").textContent = "";
     starteApp();
-  } else {
+  } catch (e) {
     document.getElementById("sperre-fehler").textContent = "Falscher Code.";
     document.getElementById("sperre-code").value = "";
     document.getElementById("sperre-code").focus();
   }
 }
 function pruefeSperre() {
-  if (DB.get("pin_hash", null)) {
-    const s = document.getElementById("sperre");
-    s.hidden = false;
+  const enc = localStorage.getItem("sue_vault_enc");
+  const plain = ladePlainVault();
+  if (enc || plain.pin_hash) {
+    document.getElementById("sperre").hidden = false;
     document.getElementById("sperre-code").focus();
   } else {
-    starteApp();  // kein Code eingerichtet -> direkt starten
+    VAULT = plain; vaultBereit = true;
+    starteApp();  // offen: keine Verschlüsselung
   }
 }
 document.getElementById("sperre-ok").addEventListener("click", entsperren);
