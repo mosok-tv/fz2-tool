@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.6";
+const APP_VERSION = "2.7";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -845,6 +845,14 @@ function renderMehr() {
            <p class="hinweis">Vorher unbedingt eine Sicherung machen und den Code sicher notieren – Code weg = Daten weg.</p>`}
     </div>
     <div class="karte">
+      <h2>Was wurde geändert</h2>
+      <p class="hinweis" style="margin-top:0">Aktuelle Version <b>${APP_VERSION}</b> · Updates werden automatisch eingespielt.</p>
+      ${Object.keys(CHANGELOG).map(v => `<div class="eintrag">
+        <div><b>Version ${esc(v)}</b>${v === APP_VERSION ? ' <span class="rz-fort">aktuell</span>' : ""}</div>
+        <ul style="margin:6px 0 0;padding-left:20px;font-size:.88rem">${CHANGELOG[v].map(x => `<li>${esc(x)}</li>`).join("")}</ul>
+      </div>`).join("")}
+    </div>
+    <div class="karte">
       <h2>Info</h2>
       <p class="hinweis" style="margin-top:0">Schichtübergabe Feinzug 2 – läuft offline auf dem Gerät, alle Daten bleiben lokal.
       Maschinen und Ampel-Status sind fest vorgegeben (Z49–Z83; grün=Produktion, gelb=Umbau, rot=Drahtriss, blau=Reparatur, violett=Abrüsten).</p>
@@ -1239,6 +1247,11 @@ function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("sp
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "2.7": [
+    "Updates spielen sich jetzt von selbst ein – kein Antippen mehr nötig",
+    "Wird gerade getippt, wartet die App, damit nichts verloren geht",
+    "Unter Mehr steht, was in jeder Version geändert wurde",
+  ],
   "2.6": [
     "Neu: Auftragsmenge eingeben – die App prüft, ob der Vorzug reicht",
     "Neu: Galvanik-Abzug je Vorzug (Ø 1,56 = 5 kg, Ø 2,10 = 7 kg)",
@@ -1346,14 +1359,33 @@ window.addEventListener("appinstalled", () => {
 });
 
 /* ---------- Service Worker + Auto-Update ---------- */
-function zeigeUpdateBanner(reg) {
-  const b = document.getElementById("update-banner");
-  b.textContent = "● Neue Version verfügbar – zum Aktualisieren tippen";
-  b.classList.add("zeigen");
-  b.onclick = () => {
-    b.textContent = "Wird aktualisiert …";
-    if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
-  };
+/* Updates werden automatisch eingespielt. Nur wenn gerade getippt wird oder
+   ein Vorgang läuft, wartet die App – sonst gingen Eingaben verloren. */
+let wartendeReg = null, updateSeit = 0;
+function updateStoertGerade() {
+  const el = document.activeElement;
+  if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return true;  // jemand tippt
+  if (typeof wiz !== "undefined" && wiz) return true;                   // Muster-Assistent offen
+  if (state.overlay === "fehler") return true;                          // Fehlerbericht offen
+  return false;
+}
+function updateAnwendenWennMoeglich() {
+  if (!wartendeReg || !wartendeReg.waiting) return;
+  if (updateStoertGerade()) {
+    // nach einer Weile wenigstens einen Knopf anbieten
+    if (Date.now() - updateSeit > 90000) {
+      const b = document.getElementById("update-banner");
+      b.textContent = "● Update bereit – zum Übernehmen tippen";
+      b.classList.add("zeigen");
+      b.onclick = () => { b.textContent = "Wird aktualisiert …"; wartendeReg.waiting.postMessage({ type: "SKIP_WAITING" }); };
+    }
+    return;
+  }
+  wartendeReg.waiting.postMessage({ type: "SKIP_WAITING" });   // -> controllerchange -> reload
+}
+function updateGemerkt(reg) {
+  wartendeReg = reg; updateSeit = Date.now();
+  updateAnwendenWennMoeglich();
 }
 if ("serviceWorker" in navigator) {
   let neugeladen = false;
@@ -1362,15 +1394,18 @@ if ("serviceWorker" in navigator) {
   });
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("sw.js").then(reg => {
-      if (reg.waiting && navigator.serviceWorker.controller) zeigeUpdateBanner(reg);
+      if (reg.waiting && navigator.serviceWorker.controller) updateGemerkt(reg);
       reg.addEventListener("updatefound", () => {
         const neu = reg.installing;
         if (neu) neu.addEventListener("statechange", () => {
-          if (neu.state === "installed" && navigator.serviceWorker.controller) zeigeUpdateBanner(reg);
+          if (neu.state === "installed" && navigator.serviceWorker.controller) updateGemerkt(reg);
         });
       });
-      // stündlich auf neue Version prüfen, solange die App offen ist
-      setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+      setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);   // halbstündlich nachsehen
+      setInterval(updateAnwendenWennMoeglich, 5000);                     // sobald es passt, einspielen
+      document.addEventListener("visibilitychange", () => {             // beim Zurückkommen sofort prüfen
+        if (!document.hidden) { reg.update().catch(() => {}); updateAnwendenWennMoeglich(); }
+      });
     }).catch(() => {});
   });
 }
