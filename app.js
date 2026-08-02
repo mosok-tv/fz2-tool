@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.3";
+const APP_VERSION = "2.4";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -344,8 +344,9 @@ function renderSpulen() {
   spRechne();
 }
 
-function spVal(id) { return zahl(document.getElementById(id).value); }
+function spVal(id) { const el = document.getElementById(id); return el ? zahl(el.value) : 0; }
 function spRechne() {
+  if (!document.getElementById("sp-summe")) return;   // Maske nicht auf dem Bildschirm
   const G = spVal("sp-g"), nSpulen = spVal("sp-nspulen"), v = spVal("sp-v");
   let faktor = spVal("sp-faktor"); if (faktor <= 0) faktor = 100;  // leer/0 = kein Abzug
   document.getElementById("sp-g-hint").textContent = G > 0 ? `1 km wiegt ${fmt(G, 4)} kg · 1 kg = ${fmt(1000 / G, 1)} m` : "Wert von der Prüfkarte eintragen (Spalte G, kg/km).";
@@ -1145,7 +1146,9 @@ document.addEventListener("input", e => {
   if (e.target.dataset && e.target.dataset.stamm && wiz) { wiz.stamm[e.target.dataset.stamm] = e.target.value; return; }
   if (e.target.classList && e.target.classList.contains("wiz-eigen") && wiz) { wiz.werte[e.target.dataset.feld] = e.target.value; return; }
   if (e.target.dataset && e.target.dataset.ist) { setzeIst(e.target.dataset.ist, e.target.value); return; }
-  if (e.target.closest("#inhalt") && state.view === "spulen") spRechne();
+  // nur rechnen, wenn die Spulen-Maske wirklich auf dem Bildschirm ist
+  // (sonst z. B. beim Tippen im Fehler-Formular über der Spulen-Ansicht)
+  if (!state.overlay && e.target.closest("#inhalt") && state.view === "spulen") spRechne();
 });
 
 function gewaehlterStatus() { const a = document.querySelector(".status-opt.aktiv"); return a ? a.dataset.status : null; }
@@ -1174,6 +1177,9 @@ function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("sp
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "2.4": [
+    "Behoben: beim Schreiben im Fehler-Formular lief im Hintergrund ein Fehler mit",
+  ],
   "2.3": [
     "Fehlerbericht: zusätzlich Teilen (WhatsApp usw.) und Text kopieren",
     "So kommt der Bericht auch ohne Mailprogramm an",
