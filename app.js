@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.7";
+const APP_VERSION = "2.8";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -630,7 +630,7 @@ function renderRuestCheck() {
   const g = felder.length, ok = felder.filter(f => status[f.name] && status[f.name].erledigt).length;
   const punkte = felder.map(f => {
     const st = status[f.name] || {};
-    return `<div class="punkt ${st.erledigt ? "ok" : ""}" data-check="${esc(f.name)}">
+    return `<div class="rpunkt ${st.erledigt ? "ok" : ""}" data-check="${esc(f.name)}">
       <div class="p-box">${st.erledigt ? "✓" : ""}</div>
       <div class="p-body">
         <div class="p-kopf">
@@ -1247,6 +1247,9 @@ function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("sp
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "2.8": [
+    "Behoben: Rüst-Liste war unleserlich – Zeilen lagen übereinander",
+  ],
   "2.7": [
     "Updates spielen sich jetzt von selbst ein – kein Antippen mehr nötig",
     "Wird gerade getippt, wartet die App, damit nichts verloren geht",

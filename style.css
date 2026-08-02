@@ -161,22 +161,23 @@ button { font-family: inherit; cursor: pointer; }
 .rz-fertig { background: #eaf3ec; border: 1px solid var(--green); border-radius: 10px; padding: 12px;
   text-align: center; color: #2b6b39; font-weight: 700; margin-top: 10px; }
 /* Checklisten-Punkt */
-.punkt { display: flex; align-items: flex-start; gap: 11px; padding: 12px; border: 1.5px solid var(--linie);
-  border-radius: 10px; margin-bottom: 8px; cursor: pointer; transition: .15s; }
-.punkt .p-box { flex: 0 0 26px; height: 26px; margin-top: 1px; border: 2px solid var(--linie); border-radius: 7px;
+.rpunkt { display: flex; align-items: flex-start; gap: 11px; padding: 12px; border: 1.5px solid var(--linie);
+  border-radius: 10px; margin-bottom: 8px; cursor: pointer; transition: .15s;
+  width: auto; height: auto; }
+.rpunkt .p-box { flex: 0 0 26px; height: 26px; margin-top: 1px; border: 2px solid var(--linie); border-radius: 7px;
   display: flex; align-items: center; justify-content: center; color: #fff; font-size: 1rem; }
-.punkt .p-body { flex: 1; min-width: 0; }
+.rpunkt .p-body { flex: 1; min-width: 0; }
 /* Name links, Sollwert rechts – bricht bei langen Einheiten sauber um */
-.punkt .p-kopf { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.punkt .p-name { font-weight: 600; font-size: .95rem; }
-.punkt .p-soll { font-size: .82rem; color: var(--grau); }
-.punkt .p-soll b { color: var(--text); font-size: 1.15rem; font-variant-numeric: tabular-nums; }
-.punkt .p-einheit { font-size: .75rem; color: var(--grau); }
-.punkt .p-ist { display: block; margin-top: 7px; padding: 9px 10px; font-size: .95rem;
+.rpunkt .p-kopf { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.rpunkt .p-name { font-weight: 600; font-size: .95rem; }
+.rpunkt .p-soll { font-size: .82rem; color: var(--grau); }
+.rpunkt .p-soll b { color: var(--text); font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.rpunkt .p-einheit { font-size: .75rem; color: var(--grau); }
+.rpunkt .p-ist { display: block; margin-top: 7px; padding: 9px 10px; font-size: .95rem;
   border: 1px solid var(--linie); border-radius: 7px; width: 100%; }
-.punkt.ok { background: #eaf3ec; border-color: var(--green); }
-.punkt.ok .p-box { background: var(--green); border-color: var(--green); }
-.punkt.ok .p-name { text-decoration: line-through; color: #5b8a63; }
+.rpunkt.ok { background: #eaf3ec; border-color: var(--green); }
+.rpunkt.ok .p-box { background: var(--green); border-color: var(--green); }
+.rpunkt.ok .p-name { text-decoration: line-through; color: #5b8a63; }
 .v-zeile { display: flex; justify-content: space-between; gap: 10px; font-size: .85rem; padding: 3px 0; }
 .rz-vers { display: inline-block; font-size: .72rem; color: var(--grau); background: #f0f3f6; border: 1px solid var(--linie); border-radius: 20px; padding: 1px 8px; margin-left: 4px; }
 .alt-wert { color: #b0392b; text-decoration: line-through; }
