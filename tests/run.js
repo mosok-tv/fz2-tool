@@ -2,6 +2,7 @@
 const suiten = [
   ["Kernfunktionen", "./app.test.js"],
   ["Sicherheit", "./sicherheit.test.js"],
+  ["Erstmuster-PDF", "./pdf.test.js"],
   ["Stylesheet", "./stil.test.js"],
 ];
 

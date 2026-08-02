@@ -8,7 +8,8 @@ const { pruefer } = require("./helfer");
 module.exports = async function () {
   const check = pruefer();
   const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
-  const app = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
+  const app = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8")
+    + fs.readFileSync(path.join(__dirname, "..", "pdf.js"), "utf8");
   const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
 
   // 1) Keine Klasse zweimal als Basis-Regel (.name { ... })

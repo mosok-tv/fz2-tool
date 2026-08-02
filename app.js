@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.9";
+const APP_VERSION = "3.0";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -743,6 +743,7 @@ function renderRuestCheck() {
       <button class="btn btn-klein" data-rezept-bearbeiten="${r.id}">Rezept bearbeiten</button>
       <button class="btn btn-klein btn-grau" data-vergleich="${r.id}">Änderungen</button>
       <button class="btn btn-klein btn-grau" data-verlauf="${r.id}">Rüst-Verlauf</button>
+      <button class="btn btn-klein" data-erstmuster="${r.id}">Erstmuster senden</button>
       ${g > 0 ? `<button class="btn btn-klein" data-ruest-abschluss="${r.id}">Rüstung abschließen</button>` : ""}
     </div>`;
 }
@@ -884,6 +885,34 @@ function ruestAbschluss(id) {
   r.ruest_status = {};  // für die nächste Rüstung zurücksetzen
   DB.set("rezepte", list);
   flash("Rüstung im Verlauf gespeichert."); render(); window.scrollTo(0, 0);
+}
+
+/* ---------- Erstmuster als PDF verschicken ---------- */
+async function sendeErstmuster(id) {
+  const r = rezepte().find(x => x.id === id);
+  if (!r) return;
+  let blob;
+  try { blob = erstmusterPdf(r); }
+  catch (e) { logFehler("PDF", e.message, e.stack); return flash("PDF konnte nicht erstellt werden."); }
+
+  const name = "Erstmuster_" + (r.kuerzel || "Muster").replace(/[^\wäöüÄÖÜß-]/g, "") +
+    (r.aufbau ? "_" + r.aufbau.replace(/[^\w,-]/g, "") : "") + ".pdf";
+  const datei = new File([blob], name, { type: "application/pdf" });
+  const text = "Erstmuster " + [r.kuerzel, r.aufbau, r.klartext].filter(Boolean).join(" ")
+    + (r.maschine ? " · " + r.maschine : "")
+    + (r.beispiel_auftrag ? " · Auftrag " + r.beispiel_auftrag : "")
+    + "\nFormular: " + formularName(r.formular) + "\nErstellt: " + jetzt() + " von " + (wer() || "-");
+
+  if (navigator.canShare && navigator.canShare({ files: [datei] })) {
+    try { await navigator.share({ files: [datei], title: name, text: text }); return; }
+    catch (e) { if (e && e.name === "AbortError") return; }   // Nutzer hat abgebrochen
+  }
+  // Kein Teilen möglich -> Datei ablegen, damit sie von Hand angehängt werden kann
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  flash("PDF gespeichert – von dort an die Mail anhängen.");
 }
 
 /* ---------- Ansicht: Mehr / Sicherung ---------- */
@@ -1191,7 +1220,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -1249,6 +1278,7 @@ document.addEventListener("click", e => {
   else if (el.dataset.vergleichZurueck) { state.vergleich = null; state.rezept = el.dataset.vergleichZurueck; render(); window.scrollTo(0, 0); }
   else if (el.dataset.check) { if (!e.target.classList.contains("p-ist")) toggleCheck(el.dataset.check); }
   else if (el.dataset.ruestAbschluss) ruestAbschluss(el.dataset.ruestAbschluss);
+  else if (el.dataset.erstmuster) sendeErstmuster(el.dataset.erstmuster);
   else if (el.dataset.gUebernehmen) { const g = gErmittelt(); if (g > 0) { document.getElementById("sp-g").value = fmt(g, 4); spRechne(); flash("G übernommen: " + fmt(g, 4) + " kg/km"); } else flash("Erst Gewicht und Länge der Spule eingeben."); }
   else if (el.dataset.export) exportData();
   else if (el.dataset.import) importData();
@@ -1338,6 +1368,10 @@ function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("sp
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "3.0": [
+    "Erstmuster als PDF im Originallayout – ausgefüllt und versendbar",
+    "Knopf Erstmuster senden beim Muster; geht per Mail, WhatsApp oder als Datei",
+  ],
   "2.9": [
     "Drei Erstmuster-Formulare wählbar: 1350, 1341 und das ältere VA-013F3",
     "Je Formular werden die passenden Einstellwerte abgefragt",
