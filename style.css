@@ -135,6 +135,18 @@ button { font-family: inherit; cursor: pointer; }
 .vergleich .gross { display: block; margin-top: 2px; font-size: 1.15rem; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
 .vergleich .benutzt { border-color: var(--green); background: #eaf3ec; }
 
+/* Ampel: reicht der Vorzug für den Auftrag? */
+.ampel { border-radius: 10px; padding: 16px; text-align: center; }
+.ampel.gut { background: #eaf3ec; border: 2px solid var(--green); }
+.ampel.schlecht { background: #fdecea; border: 2px solid var(--red); }
+.ampel-titel { font-size: 1.05rem; font-weight: 700; }
+.ampel.gut .ampel-titel { color: #2b6b39; }
+.ampel.schlecht .ampel-titel { color: #a2301f; }
+.ampel-zahl { font-size: 1.7rem; font-weight: 800; font-variant-numeric: tabular-nums; margin: 4px 0 6px; }
+.ampel.gut .ampel-zahl { color: var(--green); }
+.ampel.schlecht .ampel-zahl { color: var(--red); }
+.ampel-zeile { font-size: .85rem; color: #45525d; }
+
 /* Rüsten / Draht-Rezepte */
 .rz-eintrag { cursor: pointer; }
 .rz-eintrag:active { background: #f4f7f9; }

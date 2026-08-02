@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.5";
+const APP_VERSION = "2.6";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -154,6 +154,7 @@ const state = { view: "maschinen", maschine: null, overlay: null, rezept: null, 
 let spModus = "summe";  // Berechnungsart der Vorzüge: "summe" | "kleinster"
 let ruestSuche = "";    // Suchbegriff im Rüsten-Bereich
 let spulenSuche = "";   // Suchbegriff für gespeicherte Berechnungen
+let spAbzug = 0;        // Galvanik-Abzug je Vorzug in kg (0 / 5 / 7)
 let spEditId = null;    // gesetzt, wenn eine gespeicherte Berechnung bearbeitet wird
 const inhalt = document.getElementById("inhalt");
 const titel = document.getElementById("kopf-titel");
@@ -261,7 +262,10 @@ function spulenListeHtml() {
         ${e.anzahl_spulen} Fertigspulen → je <b>${fmt(e.gewicht_je_spule)} kg</b> / <b>${fmt(e.laenge_je_spule, 0)} m</b>
         ${e.geschwindigkeit ? "<br>Bei " + fmt(e.geschwindigkeit, 1) + " m/s → Laufzeit gesamt <b>" + hm(e.endlaenge_m / e.geschwindigkeit) + "</b> · je Spule <b>" + hm(e.laenge_je_spule / e.geschwindigkeit) + "</b>" : ""}
       </div>
-      <div class="meta">G = ${fmt(e.metergewicht, 4)} kg/km · ${e.created_at}${e.benutzer ? " · " + esc(e.benutzer) : ""}</div>
+      ${e.auftragsmenge ? `<div style="font-size:.92rem;color:${e.endgewicht >= e.auftragsmenge ? "var(--green)" : "var(--red)"}">
+        ${e.endgewicht >= e.auftragsmenge ? "✓ reicht" : "✕ reicht nicht"} für ${fmt(e.auftragsmenge)} kg Auftrag
+        (${e.endgewicht >= e.auftragsmenge ? "Reserve" : "fehlen"} ${fmt(Math.abs(e.endgewicht - e.auftragsmenge))} kg)</div>` : ""}
+      <div class="meta">G = ${fmt(e.metergewicht, 4)} kg/km${e.abzug_je_vz ? " · Abzug " + fmt(e.abzug_je_vz, 0) + " kg/VZ" : ""} · ${e.created_at}${e.benutzer ? " · " + esc(e.benutzer) : ""}</div>
       <button class="btn btn-klein" data-edit-spule="${e.id}" style="margin-top:6px">Bearbeiten</button>
       <button class="btn btn-klein btn-rot" data-del-spule="${e.id}" style="margin-top:6px;margin-left:6px">Löschen</button>
     </div>`).join("");
@@ -298,6 +302,16 @@ function renderSpulen() {
       <div class="zeile" style="border-bottom:none;margin-top:8px"><span>Summe der Vorzüge <span id="sp-anzahl" style="color:var(--grau)"></span></span><span><span class="w" id="sp-summe">0</span><span class="einheit">kg</span></span></div>
     </div>
     <div class="karte">
+      <h2>Abzug bei Galvanik-Vorzug</h2>
+      <p class="hinweis" style="margin-top:0">Bei Korb- oder Spulenvorzug aus der Nickel- oder Silbergalvanik wird je Vorzug ein fester Wert abgezogen.</p>
+      <div class="modus" style="grid-template-columns:repeat(3,1fr)">
+        <button type="button" data-abzug="0" class="${spAbzug === 0 ? "aktiv" : ""}">kein Abzug<small>normal</small></button>
+        <button type="button" data-abzug="5" class="${spAbzug === 5 ? "aktiv" : ""}">Ø 1,56<small>−5 kg je VZ</small></button>
+        <button type="button" data-abzug="7" class="${spAbzug === 7 ? "aktiv" : ""}">Ø 2,10<small>−7 kg je VZ</small></button>
+      </div>
+      <div class="hinweis" id="sp-abzug-hint"></div>
+    </div>
+    <div class="karte">
       <h2>Berechnungsart der Vorzüge</h2>
       <div class="modus">
         <button type="button" data-modus="summe" class="${spModus === 'summe' ? 'aktiv' : ''}">Alle zusammen<small>Summe aller Vorzüge</small></button>
@@ -317,6 +331,11 @@ function renderSpulen() {
       </div>
       <div class="label" style="margin-top:10px">Geschwindigkeit (m/s) <span style="color:var(--grau)">(optional – für Laufzeit)</span></div>
       <div class="schmal"><input type="text" id="sp-v" class="num" inputmode="decimal" placeholder="z. B. 20"></div>
+      <div class="label" style="margin-top:10px">Auftragsmenge (kg) <span style="color:var(--grau)">(optional – prüft, ob der Vorzug reicht)</span></div>
+      <div class="schmal"><input type="text" id="sp-auftragsmenge" class="num" inputmode="decimal" placeholder="z. B. 348"></div>
+    </div>
+    <div class="karte" id="sp-ampel-karte" style="display:none">
+      <div id="sp-ampel"></div>
     </div>
     <div class="karte erg">
       <h2>Ergebnis</h2>
@@ -350,12 +369,19 @@ function spRechne() {
   const G = spVal("sp-g"), nSpulen = spVal("sp-nspulen"), v = spVal("sp-v");
   let faktor = spVal("sp-faktor"); if (faktor <= 0) faktor = 100;  // leer/0 = kein Abzug
   document.getElementById("sp-g-hint").textContent = G > 0 ? `1 km wiegt ${fmt(G, 4)} kg · 1 kg = ${fmt(1000 / G, 1)} m` : "Wert von der Prüfkarte eintragen (Spalte G, kg/km).";
-  const vzWerte = [];
-  document.querySelectorAll(".vz").forEach(el => { const w = zahl(el.value); if (w > 0) vzWerte.push(w); });
-  const aktiv = vzWerte.length;
+  const vzRoh = [];
+  document.querySelectorAll(".vz").forEach(el => { const w = zahl(el.value); if (w > 0) vzRoh.push(w); });
+  const aktiv = vzRoh.length;
+  const summeRoh = vzRoh.reduce((a, b) => a + b, 0);
+  // Galvanik-Abzug wird je Vorzug abgezogen (laut Schulungsblatt Drahtwerk Waidhaus)
+  const vzWerte = vzRoh.map(w => Math.max(0, w - spAbzug));
   const summe = vzWerte.reduce((a, b) => a + b, 0);
   const kleinster = aktiv ? Math.min(...vzWerte) : 0;
   const massKleinster = kleinster * aktiv;
+  const abzugHint = document.getElementById("sp-abzug-hint");
+  if (abzugHint) abzugHint.textContent = (spAbzug > 0 && aktiv)
+    ? `${aktiv} Vorzüge × ${spAbzug} kg = ${fmt(spAbzug * aktiv, 0)} kg Abzug · ${fmt(summeRoh)} kg → ${fmt(summe)} kg`
+    : "";
   document.getElementById("sp-summe").textContent = fmt(summe);
   document.getElementById("sp-anzahl").textContent = aktiv ? `(${aktiv} aktiv)` : "";
   // Vergleich der beiden Berechnungsarten
@@ -381,6 +407,27 @@ function spRechne() {
   // G aus vorhandener Spule: G = Gewicht(kg) / Länge(km) = kg / (m/1000)
   const gKg = spVal("g-kg"), gM = spVal("g-m");
   document.getElementById("g-out").textContent = (gKg > 0 && gM > 0) ? fmt(gKg / (gM / 1000), 4) : "–";
+
+  // Reicht der Vorzug für den Auftrag? (Schulungsblatt: genau das wird oft nicht geprüft)
+  const auftragsmenge = spVal("sp-auftragsmenge");
+  const karte = document.getElementById("sp-ampel-karte");
+  const ampel = document.getElementById("sp-ampel");
+  if (karte && ampel) {
+    if (auftragsmenge > 0 && eg > 0) {
+      const diff = eg - auftragsmenge;
+      const reicht = diff >= 0;
+      ampel.innerHTML = `
+        <div class="ampel ${reicht ? "gut" : "schlecht"}">
+          <div class="ampel-titel">${reicht ? "✓ Vorzug reicht aus" : "✕ Vorzug reicht NICHT"}</div>
+          <div class="ampel-zahl">${reicht ? "Reserve" : "Es fehlen"} ${fmt(Math.abs(diff))} kg</div>
+          <div class="ampel-zeile">Auftragsmenge <b>${fmt(auftragsmenge)} kg</b> · machbar <b>${fmt(eg)} kg</b>
+            (${nSpulen > 0 ? fmt(nSpulen, 0) + " Spulen × " + fmt(sKg) + " kg" : "–"})</div>
+        </div>`;
+      karte.style.display = "";
+    } else {
+      karte.style.display = "none";
+    }
+  }
 }
 function gErmittelt() { const gKg = spVal("g-kg"), gM = spVal("g-m"); return (gKg > 0 && gM > 0) ? gKg / (gM / 1000) : 0; }
 
@@ -393,13 +440,16 @@ function speichereSpule() {
   if (G <= 0) return flash("Metergewicht (kg/km) fehlt.");
   if (!vz.length) return flash("Mindestens ein Vorzug-Gewicht angeben.");
   if (nSpulen < 1) return flash("Anzahl Fertigspulen muss mindestens 1 sein.");
-  const summe = vz.reduce((a, b) => a + b, 0);
-  const gesamt = spModus === "kleinster" ? Math.min(...vz) * vz.length : summe;
+  const vzNetto = vz.map(w => Math.max(0, w - spAbzug));   // Galvanik-Abzug je Vorzug
+  const summe = vzNetto.reduce((a, b) => a + b, 0);
+  const gesamt = spModus === "kleinster" ? Math.min(...vzNetto) * vzNetto.length : summe;
   const eg = gesamt * faktor / 100;
+  const auftragsmenge = spVal("sp-auftragsmenge");
   const eintrag = {
     id: neueId(), auftrag: document.getElementById("sp-auftrag").value.trim().slice(0, 50),
     metergewicht: G, vz_gewichte: vz, anzahl_vz: vz.length, gesamtmasse: gesamt,
     modus: spModus, summe_alle: summe, faktor: faktor,
+    abzug_je_vz: spAbzug, auftragsmenge: auftragsmenge > 0 ? auftragsmenge : null,
     endgewicht: eg, endlaenge_m: eg / G * 1000, anzahl_spulen: nSpulen,
     gewicht_je_spule: eg / nSpulen, laenge_je_spule: eg / nSpulen / G * 1000,
     geschwindigkeit: v > 0 ? v : null, benutzer: wer(), created_at: jetzt(),
@@ -422,6 +472,9 @@ function editSpule(id) {
   document.getElementById("sp-faktor").value = deStr(e.faktor);
   document.getElementById("sp-nspulen").value = String(e.anzahl_spulen);
   document.getElementById("sp-v").value = e.geschwindigkeit ? deStr(e.geschwindigkeit) : "";
+  document.getElementById("sp-auftragsmenge").value = e.auftragsmenge ? deStr(e.auftragsmenge) : "";
+  spAbzug = e.abzug_je_vz || 0;
+  document.querySelectorAll("[data-abzug]").forEach(b => b.classList.toggle("aktiv", parseFloat(b.dataset.abzug) === spAbzug));
   const felder = document.querySelectorAll(".vz");
   felder.forEach((el, i) => el.value = (e.vz_gewichte && e.vz_gewichte[i] != null) ? deStr(e.vz_gewichte[i]) : "");
   document.querySelectorAll(".modus button").forEach(b => b.classList.toggle("aktiv", b.dataset.modus === spModus));
@@ -1041,7 +1094,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -1050,6 +1103,11 @@ document.addEventListener("click", e => {
   else if (el.dataset.addTodo) addTodo();
   else if (el.dataset.toggleTodo) toggleTodo(el.dataset.toggleTodo);
   else if (el.dataset.delTodo) delTodo(el.dataset.delTodo);
+  else if (el.dataset.abzug !== undefined) {
+    spAbzug = parseFloat(el.dataset.abzug) || 0;
+    document.querySelectorAll("[data-abzug]").forEach(b => b.classList.toggle("aktiv", b === el));
+    spRechne();
+  }
   else if (el.dataset.modus) {
     spModus = el.dataset.modus;
     document.querySelectorAll(".modus button").forEach(b => b.classList.toggle("aktiv", b === el));
@@ -1181,6 +1239,11 @@ function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("sp
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "2.6": [
+    "Neu: Auftragsmenge eingeben – die App prüft, ob der Vorzug reicht",
+    "Neu: Galvanik-Abzug je Vorzug (Ø 1,56 = 5 kg, Ø 2,10 = 7 kg)",
+    "Rechnet nach dem Schulungsblatt Fertigware Gewicht richtig rechnen",
+  ],
   "2.5": [
     "Rüst-Liste: Sollwert größer, Ist-Feld über die ganze Breite",
     "Fehlerliste wird nach einem Update automatisch geleert",
