@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.4";
+const APP_VERSION = "2.5";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -579,9 +579,13 @@ function renderRuestCheck() {
     const st = status[f.name] || {};
     return `<div class="punkt ${st.erledigt ? "ok" : ""}" data-check="${esc(f.name)}">
       <div class="p-box">${st.erledigt ? "✓" : ""}</div>
-      <div class="p-txt"><div class="p-name">${esc(f.name)}</div>
-        <input type="text" class="p-ist" data-ist="${esc(f.name)}" value="${st.ist != null ? esc(st.ist) : ""}" placeholder="Ist-Wert (optional)"></div>
-      <div class="p-soll">Soll<br><b>${esc(soll[f.name])}</b> <span style="font-size:.72rem;color:var(--grau)">${f.einheit}</span></div>
+      <div class="p-body">
+        <div class="p-kopf">
+          <span class="p-name">${esc(f.name)}</span>
+          <span class="p-soll">Soll <b>${esc(soll[f.name])}</b>${f.einheit ? ` <span class="p-einheit">${esc(f.einheit)}</span>` : ""}</span>
+        </div>
+        <input type="text" class="p-ist" data-ist="${esc(f.name)}" value="${st.ist != null ? esc(st.ist) : ""}" placeholder="Ist-Wert eintragen (optional)">
+      </div>
     </div>`;
   }).join("");
   inhalt.innerHTML = `
@@ -1177,6 +1181,10 @@ function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("sp
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "2.5": [
+    "Rüst-Liste: Sollwert größer, Ist-Feld über die ganze Breite",
+    "Fehlerliste wird nach einem Update automatisch geleert",
+  ],
   "2.4": [
     "Behoben: beim Schreiben im Fehler-Formular lief im Hintergrund ein Fehler mit",
   ],
@@ -1239,6 +1247,12 @@ function zeigeWasNeu() {
   if (gesehen === APP_VERSION) return;
   const ersterStart = (gesehen === null);
   DB.set("version_gesehen", APP_VERSION);
+  if (!ersterStart) {
+    // Nach einem Update sind die alten Meldungen erledigt – Liste leeren,
+    // damit der Fehler-Knopf nur noch bei wirklich Neuem rot wird.
+    DB.set("fehler", []);
+    aktualisiereFehlerBadge();
+  }
   const neu = CHANGELOG[APP_VERSION];
   if (ersterStart || !neu || !neu.length) return;  // beim allerersten Öffnen nichts zeigen
   document.getElementById("update-titel").textContent = "Aktualisiert auf Version " + APP_VERSION;
