@@ -188,6 +188,13 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--text); font-family: inherit; }
 .grossbtn small { display: block; font-weight: 400; font-size: .8em; color: var(--grau); margin-top: 5px; line-height: 1.35; }
 .grossbtn:active { background: #eef4f8; border-color: var(--blau); }
+/* Formular-Auswahl im Assistenten */
+.formwahl { display: block; width: 100%; text-align: left; background: #fff; border: 2px solid var(--linie);
+  border-radius: 11px; padding: 13px 15px; margin-bottom: 8px; font-size: .98rem; font-weight: 700;
+  color: var(--text); font-family: inherit; }
+.formwahl small { display: block; font-weight: 400; font-size: .78rem; color: var(--grau); margin-top: 3px; }
+.formwahl.aktiv { border-color: var(--blau); background: var(--blau); color: #fff; }
+.formwahl.aktiv small { color: rgba(255,255,255,.85); }
 .wschritte { display: flex; gap: 8px; margin-bottom: 6px; }
 .wpunkt { flex: 1; height: 8px; border-radius: 5px; background: #dde3e8; }
 .wpunkt.an { background: var(--green); }

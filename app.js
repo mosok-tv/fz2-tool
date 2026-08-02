@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.8";
+const APP_VERSION = "2.9";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -73,38 +73,121 @@ function ruestungen() { return DB.get("ruestungen", []); }
 function benutzerListe() { return DB.get("benutzer", []); }
 function wer() { return DB.get("angemeldet", "") || ""; }
 
-// Einzustellende Werte (die *-Felder aus dem Erstmuster), nach Bereich gruppiert
-const EINSTELLFELDER = [
-  { gruppe: "Ablauf", felder: [
-    { name: "Abwickelrichtung", einheit: "" },
-    { name: "Tänzer Ziehen", einheit: "bar/kg/mm" },
-    { name: "Zugkraft Ablauf", einheit: "cN" },
-  ] },
-  { gruppe: "Ziehen", felder: [
-    { name: "Ziehgeschwindigkeit", einheit: "m/s" },
-    { name: "Anzahl Drähte", einheit: "" },
-    { name: "Enddurchmesser", einheit: "mm" },
-    { name: "erster Dm schneller Teil", einheit: "mm" },
-    { name: "letzter Dm langsamer Teil", einheit: "mm" },
-    { name: "Schlupf", einheit: "%" },
-    { name: "übersprungene Stufen", einheit: "" },
-  ] },
-  { gruppe: "Glühe", felder: [
-    { name: "Glühfaktor", einheit: "" },
-    { name: "Glühspannung", einheit: "V" },
-    { name: "Glühstrom", einheit: "A" },
-    { name: "Luftdruck Glühe", einheit: "bar" },
-    { name: "Ventilöffnung Druckluft", einheit: "%" },
-    { name: "Kugelhahn Schutzgas", einheit: "%" },
-  ] },
-  { gruppe: "Spuler", felder: [
-    { name: "Spulengröße", einheit: "mm" },
-    { name: "Tänzer Spuler", einheit: "g/mm" },
-    { name: "Zugkraft Aufwickelspannung", einheit: "cN" },
-    { name: "Verlegeschritt", einheit: "V/Sek" },
-  ] },
-];
-const ALLE_FELDER = EINSTELLFELDER.flatMap(g => g.felder);
+/* Erstmuster-Formulare des Drahtwerks. Je Formular die Werte, die der
+   Maschinenbediener einstellt (im Blatt mit * gekennzeichnet). */
+const FORMULARE = {
+  "1350": {
+    name: "Drahtzug 1350",
+    beschreibung: "WPD-013 1350 · Niehoff MMH50 (z. B. Z68)",
+    gruppen: [
+      { gruppe: "Ablauf", felder: [
+        { name: "Tänzer Ziehen", einheit: "bar/kg/mm" },
+        { name: "Zugkraft Ablauf", einheit: "cN" },
+      ] },
+      { gruppe: "Ziehen", felder: [
+        { name: "Ziehgeschwindigkeit", einheit: "m/s" },
+        { name: "KSS-Ventil Konenbesprühung oben", einheit: "%" },
+        { name: "KSS-Ventil Ziehsteinbesprühung oben", einheit: "%" },
+        { name: "KSS-Ventil Konenbesprühung unten", einheit: "%" },
+        { name: "KSS-Ventil Ziehsteinbesprühung unten", einheit: "%" },
+        { name: "übersprungene Stufen", einheit: "" },
+        { name: "Anzahl Drähte", einheit: "" },
+        { name: "Enddurchmesser", einheit: "mm" },
+        { name: "erster Dm schneller Teil", einheit: "mm" },
+        { name: "letzter Dm langsamer Teil", einheit: "mm" },
+        { name: "Schlupf", einheit: "%" },
+      ] },
+      { gruppe: "Glühe", felder: [
+        { name: "Glühfaktor", einheit: "" },
+        { name: "Glühspannung", einheit: "V" },
+        { name: "Glühstrom", einheit: "A" },
+        { name: "Luftdruck Glühe", einheit: "bar" },
+        { name: "Ventilöffnung Druckluft", einheit: "%" },
+        { name: "Trocknungssteine", einheit: "mm" },
+        { name: "Kugelhahn Schutzgas", einheit: "%" },
+        { name: "KSS-Ventil 1", einheit: "%" },
+        { name: "KSS-Ventil 2", einheit: "%" },
+        { name: "KSS-Ventil 3", einheit: "%" },
+        { name: "KSS-Ventil 4", einheit: "%" },
+      ] },
+      { gruppe: "Spuler", felder: [
+        { name: "Verlegung Hand/Automatik", einheit: "" },
+        { name: "Spulengröße", einheit: "mm" },
+        { name: "Tänzer Spuler", einheit: "g + mm" },
+        { name: "Zugkraft Aufwickelspannung", einheit: "cN" },
+        { name: "Verlegeschritt-Einstellung", einheit: "V + Sek" },
+      ] },
+    ],
+  },
+  "1341": {
+    name: "Drahtzug 1341",
+    beschreibung: "WPD-013 1341 · Niehoff M5",
+    gruppen: [
+      { gruppe: "Ablauf", felder: [
+        { name: "Abwickelrichtung", einheit: "" },
+        { name: "Tänzer Ziehen", einheit: "bar/kg/mm" },
+        { name: "Zugkraft Ablauf", einheit: "cN" },
+      ] },
+      { gruppe: "Ziehen", felder: [
+        { name: "Ziehgeschwindigkeit + Skala", einheit: "m/s" },
+      ] },
+      { gruppe: "Glühe", felder: [
+        { name: "Glühfaktor", einheit: "" },
+        { name: "Glühspannung", einheit: "V" },
+        { name: "Glühstrom", einheit: "A" },
+        { name: "Luftdruck Glühe", einheit: "bar" },
+        { name: "Ventilöffnung Druckluft", einheit: "%" },
+        { name: "Trocknungssteine", einheit: "mm" },
+        { name: "Kugelhahn Dampf", einheit: "%" },
+        { name: "KSS-Ventil Zulauf", einheit: "%" },
+        { name: "KSS-Ventil Ablauf", einheit: "%" },
+      ] },
+      { gruppe: "Spuler", felder: [
+        { name: "Verlegung Hand/Automatik", einheit: "" },
+        { name: "Spulenkern-Einstellung", einheit: "mm" },
+        { name: "Tänzer Spuler", einheit: "g + mm" },
+        { name: "Zugkraft Aufwickelspannung", einheit: "cN" },
+        { name: "Verlegeschritt-Einstellung", einheit: "Skala" },
+        { name: "Verlegeschritt", einheit: "Sekunden" },
+      ] },
+    ],
+  },
+  "va013f3": {
+    name: "Drahtzug allgemein",
+    beschreibung: "VA-013F3 · älteres Formular",
+    gruppen: [
+      { gruppe: "Maschine", felder: [
+        { name: "Geschwindigkeit Soll/Ist", einheit: "m/s" },
+        { name: "Werkstoff Kontaktband", einheit: "Kupfer/Nickel" },
+        { name: "Umlegung in der Maschine", einheit: "Anzahl" },
+        { name: "Umlegung auf der Abzugscheibe", einheit: "Anzahl" },
+      ] },
+      { gruppe: "Glühe", felder: [
+        { name: "Faktor (Glüh-/Bereichseinstellung)", einheit: "%" },
+        { name: "Glühstrom", einheit: "A" },
+        { name: "Glühspannung", einheit: "V" },
+      ] },
+      { gruppe: "Spuler", felder: [
+        { name: "Zugspannung Spuler Soll/Ist", einheit: "cN" },
+        { name: "Tänzer Gewichte Position/Skala", einheit: "mm" },
+        { name: "Tänzer Luft", einheit: "bar" },
+        { name: "Spulenkern Einstellung", einheit: "" },
+        { name: "Verlegeschritt", einheit: "Sek" },
+      ] },
+      { gruppe: "Fettgehalt", felder: [
+        { name: "Fettgehalt Modul 1", einheit: "%" },
+        { name: "Fettgehalt Modul 2", einheit: "%" },
+        { name: "Fettgehalt Modul 3", einheit: "%" },
+        { name: "Fettgehalt Glühe", einheit: "%" },
+      ] },
+    ],
+  },
+};
+const STANDARD_FORMULAR = "1350";
+// Gruppen/Felder eines Formulars (unbekannte Kennung -> Standard)
+function formularGruppen(id) { return (FORMULARE[id] || FORMULARE[STANDARD_FORMULAR]).gruppen; }
+function formularFelder(id) { return formularGruppen(id).flatMap(g => g.felder); }
+function formularName(id) { return (FORMULARE[id] || FORMULARE[STANDARD_FORMULAR]).name; }
 function neueId()  { return (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2)); }
 
 /* ---------- Hilfsfunktionen ---------- */
@@ -497,7 +580,7 @@ function ruestListeHtml() {
     const vers = (r.historie && r.historie.length) ? `<span class="rz-vers">${r.historie.length + 1} Stände</span>` : "";
     return `<div class="eintrag rz-eintrag" data-rezept="${r.id}">
       <div><b>${esc(r.kuerzel)}</b> · ${esc(r.aufbau)} ${badge} ${vers}</div>
-      <div class="meta">${esc(r.klartext || "")}${r.maschine ? " · " + esc(r.maschine) : ""}${r.beispiel_auftrag ? " · Auftrag " + esc(r.beispiel_auftrag) : ""}</div>
+      <div class="meta">${esc(r.klartext || "")}${r.maschine ? " · " + esc(r.maschine) : ""}${r.beispiel_auftrag ? " · Auftrag " + esc(r.beispiel_auftrag) : ""} · ${esc(formularName(r.formular))}</div>
     </div>`;
   }).join("");
 }
@@ -516,10 +599,11 @@ let wiz = null;   // { phase: "start"|"vorlage"|"schritte", schritt, werte:{}, s
 
 function wizStart(id) {
   if (id === "neu") {
-    wiz = { phase: "start", schritt: 0, werte: {}, stamm: {} };
+    wiz = { phase: "start", schritt: 0, werte: {}, stamm: {}, formular: STANDARD_FORMULAR };
   } else {
     const r = rezepte().find(x => x.id === id) || {};
     wiz = { phase: "schritte", schritt: 0, werte: Object.assign({}, r.soll || {}),
+      formular: r.formular || STANDARD_FORMULAR,
       stamm: { kuerzel: r.kuerzel || "", aufbau: r.aufbau || "", klartext: r.klartext || "",
                maschine: r.maschine || "", beispiel_auftrag: r.beispiel_auftrag || "" } };
   }
@@ -557,7 +641,8 @@ function renderWizVorlage() {
 }
 
 function renderWizSchritt() {
-  const gesamt = EINSTELLFELDER.length + 1;   // Schritt 0 = Draht-Typ, dann die Gruppen
+  const gruppen = formularGruppen(wiz.formular);
+  const gesamt = gruppen.length + 1;   // Schritt 0 = Draht-Typ, dann die Gruppen
   const s = wiz.schritt;
   titel.textContent = state.rezeptForm === "neu" ? "Neues Muster" : "Muster ändern";
   const punkte = Array.from({ length: gesamt }, (_, i) => `<div class="wpunkt ${i <= s ? "an" : ""}"></div>`).join("");
@@ -577,9 +662,13 @@ function renderWizSchritt() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div><label>Maschine</label><input type="text" class="wiz-stamm" data-stamm="maschine" value="${esc(st.maschine)}" placeholder="z. B. Z49"></div>
         <div><label>Auftrag</label><input type="text" class="wiz-stamm" data-stamm="beispiel_auftrag" value="${esc(st.beispiel_auftrag)}"></div>
-      </div>`;
+      </div>
+      <div class="label" style="margin-top:12px">Erstmuster-Formular</div>
+      <p class="hinweis" style="margin-top:0">Bestimmt, welche Werte in den nächsten Schritten abgefragt werden.</p>
+      ${Object.keys(FORMULARE).map(k => `<button type="button" class="formwahl ${wiz.formular === k ? "aktiv" : ""}" data-formular="${k}">
+        ${esc(FORMULARE[k].name)}<small>${esc(FORMULARE[k].beschreibung)}</small></button>`).join("")}`;
   } else {
-    const g = EINSTELLFELDER[s - 1];
+    const g = gruppen[s - 1];
     gruppenName = g.gruppe;
     inhaltHtml = g.felder.map((f, idx) => {
       const gewaehlt = wiz.werte[f.name] || "";
@@ -611,7 +700,7 @@ function renderWizSchritt() {
 }
 
 function wizWeiter() {
-  const gesamt = EINSTELLFELDER.length + 1;
+  const gesamt = formularGruppen(wiz.formular).length + 1;
   if (wiz.schritt < gesamt - 1) { wiz.schritt++; render(); window.scrollTo(0, 0); }
   else speichereRezept();
 }
@@ -626,7 +715,7 @@ function renderRuestCheck() {
   if (!r) { state.rezept = null; return render(); }
   titel.textContent = r.kuerzel + " " + r.aufbau;
   const soll = r.soll || {}, status = r.ruest_status || {};
-  const felder = ALLE_FELDER.filter(f => soll[f.name] != null && soll[f.name] !== "");
+  const felder = formularFelder(r.formular).filter(f => soll[f.name] != null && soll[f.name] !== "");
   const g = felder.length, ok = felder.filter(f => status[f.name] && status[f.name].erledigt).length;
   const punkte = felder.map(f => {
     const st = status[f.name] || {};
@@ -644,7 +733,7 @@ function renderRuestCheck() {
   inhalt.innerHTML = `
     <button class="btn btn-grau btn-klein" data-rezept-zurueck="1">‹ Zurück</button>
     <div class="karte" style="margin-top:12px">
-      <div class="meta">${esc(r.klartext || "")}${r.maschine ? " · " + esc(r.maschine) : ""}</div>
+      <div class="meta">${esc(r.klartext || "")}${r.maschine ? " · " + esc(r.maschine) : ""} · ${esc(formularName(r.formular))}</div>
       <div class="fortschritt"><span class="fz">${ok} / ${g} eingestellt</span><div class="balken"><div style="width:${g ? ok / g * 100 : 0}%"></div></div></div>
       ${g > 0 && g === ok ? '<div class="rz-fertig">✓ Alles eingestellt – Maschine ist gerüstet</div>' : ""}
     </div>
@@ -663,7 +752,7 @@ function renderVerlauf() {
   titel.textContent = "Verlauf";
   const eintraege = ruestungen().filter(x => x.rezept_id === state.verlauf).slice().reverse();
   const liste = eintraege.length ? eintraege.map(e => {
-    const zeilen = ALLE_FELDER.filter(f => e.ist && e.ist[f.name]).map(f => {
+    const zeilen = formularFelder(r && r.formular).filter(f => e.ist && e.ist[f.name]).map(f => {
       const i = e.ist[f.name];
       return `<div class="v-zeile"><span>${esc(f.name)}</span><span>Soll ${esc(i.soll || "–")} · Ist <b>${esc(i.wert || "–")}</b></span></div>`;
     }).join("");
@@ -686,7 +775,7 @@ function vorhandeneWerte(feldName) {
 }
 
 function diffFelder(alt, neu) {
-  const meta = [["kuerzel", "Kürzel"], ["aufbau", "Aufbau"], ["klartext", "Klartext"], ["maschine", "Maschine"], ["beispiel_auftrag", "Auftrag"]];
+  const meta = [["kuerzel", "Kürzel"], ["aufbau", "Aufbau"], ["klartext", "Klartext"], ["maschine", "Maschine"], ["beispiel_auftrag", "Auftrag"], ["formular", "Formular"]];
   const aend = [];
   meta.forEach(mm => { const f = mm[0]; if ((alt[f] || "") !== (neu[f] || "")) aend.push({ feld: mm[1], alt: alt[f] || "–", neu: neu[f] || "–" }); });
   const keys = Array.from(new Set(Object.keys(alt.soll || {}).concat(Object.keys(neu.soll || {}))));
@@ -732,7 +821,7 @@ function speichereRezept() {
   const soll = {};
   Object.keys(wiz.werte).forEach(k => { const v = String(wiz.werte[k] || "").trim(); if (v) soll[k] = v; });
   const daten = {
-    kuerzel: kuerzel, aufbau: aufbau,
+    kuerzel: kuerzel, aufbau: aufbau, formular: wiz.formular || STANDARD_FORMULAR,
     klartext: (st.klartext || "").trim(),
     maschine: (st.maschine || "").trim(),
     beispiel_auftrag: (st.beispiel_auftrag || "").trim(),
@@ -743,8 +832,8 @@ function speichereRezept() {
   if (id !== "neu") {
     const r = list.find(x => x.id === id);
     if (r) {
-      const alt = { soll: r.soll, kuerzel: r.kuerzel, aufbau: r.aufbau, klartext: r.klartext, maschine: r.maschine, beispiel_auftrag: r.beispiel_auftrag };
-      const neu = { soll: daten.soll, kuerzel: daten.kuerzel, aufbau: daten.aufbau, klartext: daten.klartext, maschine: daten.maschine, beispiel_auftrag: daten.beispiel_auftrag };
+      const alt = { soll: r.soll, kuerzel: r.kuerzel, aufbau: r.aufbau, klartext: r.klartext, maschine: r.maschine, beispiel_auftrag: r.beispiel_auftrag, formular: r.formular };
+      const neu = { soll: daten.soll, kuerzel: daten.kuerzel, aufbau: daten.aufbau, klartext: daten.klartext, maschine: daten.maschine, beispiel_auftrag: daten.beispiel_auftrag, formular: daten.formular };
       if (JSON.stringify(alt) !== JSON.stringify(neu)) {
         // nur bei echter Änderung: alten Stand in die Historie sichern
         if (!r.historie) r.historie = [];
@@ -785,7 +874,7 @@ function ruestAbschluss(id) {
   if (!r) return;
   const soll = r.soll || {}, status = r.ruest_status || {};
   const ist = {};
-  ALLE_FELDER.filter(f => soll[f.name] != null && soll[f.name] !== "").forEach(f => {
+  formularFelder(r.formular).filter(f => soll[f.name] != null && soll[f.name] !== "").forEach(f => {
     const st = status[f.name] || {};
     ist[f.name] = { soll: soll[f.name], wert: st.ist || "", erledigt: !!st.erledigt };
   });
@@ -1102,7 +1191,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -1132,11 +1221,13 @@ document.addEventListener("click", e => {
     const q = rezepte().find(x => x.id === el.dataset.wizKopie);
     if (q) {
       wiz.werte = Object.assign({}, q.soll || {});
+      wiz.formular = q.formular || STANDARD_FORMULAR;
       wiz.stamm = { kuerzel: q.kuerzel || "", aufbau: q.aufbau || "", klartext: q.klartext || "",
                     maschine: q.maschine || "", beispiel_auftrag: "" };  // Auftrag bewusst leer
     }
     wiz.phase = "schritte"; wiz.schritt = 0; render(); window.scrollTo(0, 0);
   }
+  else if (el.dataset.formular) { wiz.formular = el.dataset.formular; render(); }
   else if (el.dataset.wizWeiter) wizWeiter();
   else if (el.dataset.wizZurueck) wizZurueck();
   else if (el.dataset.wizWert) {
@@ -1247,6 +1338,11 @@ function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("sp
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "2.9": [
+    "Drei Erstmuster-Formulare wählbar: 1350, 1341 und das ältere VA-013F3",
+    "Je Formular werden die passenden Einstellwerte abgefragt",
+    "Formular steht beim Muster und lässt sich später ändern",
+  ],
   "2.8": [
     "Behoben: Rüst-Liste war unleserlich – Zeilen lagen übereinander",
   ],

@@ -150,6 +150,36 @@ module.exports = async function () {
   check("Vergleich zeigt alt -> neu", d.getElementById("inhalt").innerHTML.indexOf("18") !== -1
     && d.getElementById("inhalt").innerHTML.indexOf("20") !== -1);
 
+  // --- Erstmuster-Formulare: Auswahl bestimmt die abgefragten Werte ---
+  tab("ruesten");
+  d.querySelector("[data-rezept-neu]").click();
+  d.querySelector("[data-wiz-leer]").click();
+  check("drei Formulare zur Auswahl", d.querySelectorAll(".formwahl").length === 3);
+  check("Standard ist 1350", d.querySelector('.formwahl[data-formular="1350"]').classList.contains("aktiv"));
+  // 1341 hat nur einen Ziehen-Wert, 1350 hat elf
+  weiter(); weiter();
+  const felder1350 = d.querySelectorAll(".wfeld").length;
+  d.querySelector("[data-wiz-zurueck]").click();
+  d.querySelector("[data-wiz-zurueck]").click();
+  d.querySelector('.formwahl[data-formular="1341"]').click();
+  check("Formular 1341 ausgewählt", d.querySelector('.formwahl[data-formular="1341"]').classList.contains("aktiv"));
+  weiter(); weiter();
+  check("1341 fragt weniger Ziehen-Werte ab als 1350", d.querySelectorAll(".wfeld").length < felder1350);
+  check("1341 fragt Ziehgeschwindigkeit + Skala", d.getElementById("inhalt").innerHTML.indexOf("Ziehgeschwindigkeit + Skala") !== -1);
+  // VA-Formular hat eigene Felder (Fettgehalt)
+  d.querySelector("[data-wiz-zurueck]").click();
+  d.querySelector("[data-wiz-zurueck]").click();
+  d.querySelector('.formwahl[data-formular="va013f3"]').click();
+  stamm({ kuerzel: "TEST-VA", aufbau: "1x0,40" });
+  weiter();
+  check("VA: erste Gruppe heißt Maschine", d.getElementById("inhalt").innerHTML.indexOf("Maschine</h2>") !== -1);
+  weiter(); weiter(); weiter();
+  check("VA: letzte Gruppe ist Fettgehalt", d.getElementById("inhalt").innerHTML.indexOf("Fettgehalt Modul 1") !== -1);
+  weiter();   // speichern
+  const va = S("rezepte").find(r => r.kuerzel === "TEST-VA");
+  check("Formular wird mitgespeichert", va && va.formular === "va013f3");
+  check("Liste zeigt den Formularnamen", d.getElementById("inhalt").innerHTML.indexOf("Drahtzug allgemein") !== -1);
+
   // --- Fehler melden: automatische Erfassung, kein Absturz beim Tippen ---
   tab("spulen");
   setVal(d.getElementById("sp-g"), "1,15");
