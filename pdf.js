@@ -297,7 +297,7 @@ function kopfZeichnen(doc, form, r, seite, seiten) {
   return o + ZH + 3;
 }
 
-function fussZeichnen(doc, o) {
+function fussZeichnen(doc, o, ersteller, datum) {
   doc.rechteck(RAND, o, BREITE, 22);
   doc.text("Bemerkung:", SP_NR, o + 12, 8, true);
   o += 22;
@@ -306,13 +306,16 @@ function fussZeichnen(doc, o) {
   doc.linie(RAND + 360, o, RAND + 360, o + 26);
   doc.text("Erstellt von:", SP_NR, o + 11, 8);
   doc.text("Datum:", SP_NR, o + 22, 8);
+  // wer das Erstmuster erzeugt hat, wird eingetragen; geprüft wird von jemand anderem
+  if (ersteller) doc.text(ersteller, SP_NR + 58, o + 11, 8.5, true);
+  if (datum) doc.text(datum, SP_NR + 58, o + 22, 8.5, true);
   doc.text("Geprüft von:", RAND + 186, o + 11, 8);
   doc.text("Datum:", RAND + 186, o + 22, 8);
   doc.text("* vom Maschinenbediener einzustellen", RAND + 366, o + 11, 8);
   return o + 26;
 }
 
-function erstmusterPdf(rezept) {
+function erstmusterPdf(rezept, ersteller, datum) {
   const form = PDF_FORMULARE[rezept.formular] || PDF_FORMULARE["1350"];
   const soll = rezept.soll || {};
 
@@ -357,7 +360,7 @@ function erstmusterPdf(rezept) {
       }
       o += ZH;
     });
-    if (s === seiten - 1) fussZeichnen(doc, o);
+    if (s === seiten - 1) fussZeichnen(doc, o, ersteller, datum);
   }
   return doc.bauen();
 }

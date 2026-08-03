@@ -16,7 +16,7 @@ module.exports = async function () {
     soll: { "Tänzer Ziehen": "1,9", "Zugkraft Ablauf": "400", "Ziehgeschwindigkeit": "16",
             "Glühfaktor": "1,15", "Spulengröße": "250" },
   };
-  const bytes = erstmusterPdf(rezept).teile[0];
+  const bytes = erstmusterPdf(rezept, "güntzel", "03.08.2026").teile[0];
   const roh = Buffer.from(bytes).toString("latin1");
 
   check("PDF beginnt mit %PDF", roh.startsWith("%PDF-"));
@@ -36,6 +36,12 @@ module.exports = async function () {
   check("Sollwert 1,15 eingetragen", enthalten("1,15"));
   check("Sternchen-Hinweis im Fuß", roh.indexOf("Maschinenbediener einzustellen") !== -1);
   check("Umlaute als Latin-1 (Glühfaktor)", roh.indexOf("Gl\xfchfaktor") !== -1);
+  check("Ersteller im Fuß eingetragen", enthalten("g\xfcntzel"));
+  check("Datum im Fuß eingetragen", enthalten("03.08.2026"));
+  check("Geprüft-von bleibt leer", roh.indexOf("(Gepr\xfcft von:)") !== -1);
+  // ohne Angaben bleiben die Felder frei
+  const ohne = Buffer.from(erstmusterPdf(rezept).teile[0]).toString("latin1");
+  check("ohne Ersteller bleibt das Feld leer", ohne.indexOf("(g\xfcntzel)") === -1);
 
   // leeres Muster darf nicht abstürzen
   let leerOk = true;

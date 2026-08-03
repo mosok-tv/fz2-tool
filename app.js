@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "3.0";
+const APP_VERSION = "3.1";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -892,7 +892,8 @@ async function sendeErstmuster(id) {
   const r = rezepte().find(x => x.id === id);
   if (!r) return;
   let blob;
-  try { blob = erstmusterPdf(r); }
+  const heute = jetzt().split(" ")[0];   // nur das Datum, ohne Uhrzeit
+  try { blob = erstmusterPdf(r, wer(), heute); }
   catch (e) { logFehler("PDF", e.message, e.stack); return flash("PDF konnte nicht erstellt werden."); }
 
   const name = "Erstmuster_" + (r.kuerzel || "Muster").replace(/[^\wäöüÄÖÜß-]/g, "") +
@@ -1368,6 +1369,9 @@ function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("sp
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "3.1": [
+    "Erstmuster-PDF: Ersteller und Datum werden automatisch eingetragen",
+  ],
   "3.0": [
     "Erstmuster als PDF im Originallayout – ausgefüllt und versendbar",
     "Knopf Erstmuster senden beim Muster; geht per Mail, WhatsApp oder als Datei",
