@@ -6,6 +6,7 @@ const { webcrypto } = require("crypto");
 
 const APP = path.join(__dirname, "..");
 const html = fs.readFileSync(path.join(APP, "index.html"), "utf8");
+const pdfjs = fs.readFileSync(path.join(APP, "pdf.js"), "utf8");
 const appjs = fs.readFileSync(path.join(APP, "app.js"), "utf8");
 
 const warte = ms => new Promise(r => setTimeout(r, ms));
@@ -22,7 +23,9 @@ function starteApp(vault, roh) {
   w.scrollTo = () => {}; w.confirm = () => true; w.alert = () => {}; w.prompt = () => "";
   if (vault) w.localStorage.setItem("sue_vault", JSON.stringify(vault));
   if (roh) Object.keys(roh).forEach(k => w.localStorage.setItem(k, roh[k]));
-  w.eval(appjs);
+  // jsdom kapselt jeden eval-Aufruf; im Browser teilen sich die Skripte den
+  // Namensraum – daher zusammen ausführen, damit app.js pdf.js sieht
+  w.eval(pdfjs + "\n" + appjs);
   return w;
 }
 

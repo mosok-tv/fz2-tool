@@ -180,6 +180,22 @@ module.exports = async function () {
   check("Formular wird mitgespeichert", va && va.formular === "va013f3");
   check("Liste zeigt den Formularnamen", d.getElementById("inhalt").innerHTML.indexOf("Drahtzug allgemein") !== -1);
 
+  // --- Erstmuster senden: Knopf vorhanden und erzeugt ein PDF zum Teilen ---
+  tab("ruesten");
+  d.querySelector("[data-rezept]").click();
+  const senden = d.querySelector("[data-erstmuster]");
+  check("Knopf 'Erstmuster senden' in der Muster-Ansicht", senden !== null && senden.textContent.indexOf("Erstmuster") !== -1);
+  let geteilt = null;
+  w.navigator.canShare = () => true;
+  w.navigator.share = o => { geteilt = o; return Promise.resolve(); };
+  senden.click();
+  await warte(150);
+  check("Klick erzeugt ein PDF und öffnet das Teilen", geteilt !== null);
+  check("PDF hat sinnvollen Dateinamen", geteilt && /^Erstmuster_.*\.pdf$/.test(geteilt.files[0].name));
+  check("Datei ist als PDF gekennzeichnet", geteilt && geteilt.files[0].type === "application/pdf");
+  check("Begleittext nennt Muster und Formular", geteilt
+    && geteilt.text.indexOf("Erstmuster") !== -1 && geteilt.text.indexOf("Formular:") !== -1);
+
   // --- Fehler melden: automatische Erfassung, kein Absturz beim Tippen ---
   tab("spulen");
   setVal(d.getElementById("sp-g"), "1,15");
