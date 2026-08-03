@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "3.1";
+const APP_VERSION = "3.2";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -85,6 +85,8 @@ const FORMULARE = {
         { name: "Zugkraft Ablauf", einheit: "cN" },
       ] },
       { gruppe: "Ziehen", felder: [
+        { name: "Maschinentyp Ziehmaschine", einheit: "", angabe: 1, vorschlaege: ["NIEHOFF MMH50"] },
+        { name: "KSS-Produkt Ziehmaschine", einheit: "", angabe: 1, vorschlaege: ["Zeller + Gmelin Multidraw Cu Sy Spezial"] },
         { name: "Ziehgeschwindigkeit", einheit: "m/s" },
         { name: "KSS-Ventil Konenbesprühung oben", einheit: "%" },
         { name: "KSS-Ventil Ziehsteinbesprühung oben", einheit: "%" },
@@ -98,6 +100,8 @@ const FORMULARE = {
         { name: "Schlupf", einheit: "%" },
       ] },
       { gruppe: "Glühe", felder: [
+        { name: "Maschinentyp Glühe", einheit: "", angabe: 1, vorschlaege: ["RM 121.1.R.08.400"] },
+        { name: "KSS-Produkt Glühe", einheit: "", angabe: 1, vorschlaege: ["Bechem Unopol F811"] },
         { name: "Glühfaktor", einheit: "" },
         { name: "Glühspannung", einheit: "V" },
         { name: "Glühstrom", einheit: "A" },
@@ -111,8 +115,9 @@ const FORMULARE = {
         { name: "KSS-Ventil 4", einheit: "%" },
       ] },
       { gruppe: "Spuler", felder: [
-        { name: "Verlegung Hand/Automatik", einheit: "" },
-        { name: "Spulengröße", einheit: "mm" },
+        { name: "Maschinentyp Spuler", einheit: "", angabe: 1, vorschlaege: ["SG 145.F.E"] },
+        { name: "Verlegung Hand/Automatik", einheit: "", vorschlaege: ["Hand", "Automatik"] },
+        { name: "Spulengröße", einheit: "mm", vorschlaege: ["250", "350", "560"] },
         { name: "Tänzer Spuler", einheit: "g + mm" },
         { name: "Zugkraft Aufwickelspannung", einheit: "cN" },
         { name: "Verlegeschritt-Einstellung", einheit: "V + Sek" },
@@ -129,9 +134,13 @@ const FORMULARE = {
         { name: "Zugkraft Ablauf", einheit: "cN" },
       ] },
       { gruppe: "Ziehen", felder: [
+        { name: "Maschinentyp Ziehmaschine", einheit: "", angabe: 1, vorschlaege: ["NIEHOFF M5"] },
+        { name: "KSS-Produkt Ziehmaschine", einheit: "", angabe: 1, vorschlaege: ["Zeller + Gmelin Multidraw Cu Sy Spezial"] },
         { name: "Ziehgeschwindigkeit + Skala", einheit: "m/s" },
       ] },
       { gruppe: "Glühe", felder: [
+        { name: "Maschinentyp Glühe", einheit: "", angabe: 1, vorschlaege: ["Niehoff VG5"] },
+        { name: "KSS-Produkt Glühe", einheit: "", angabe: 1, vorschlaege: ["Bechem Unopol F811"] },
         { name: "Glühfaktor", einheit: "" },
         { name: "Glühspannung", einheit: "V" },
         { name: "Glühstrom", einheit: "A" },
@@ -143,7 +152,8 @@ const FORMULARE = {
         { name: "KSS-Ventil Ablauf", einheit: "%" },
       ] },
       { gruppe: "Spuler", felder: [
-        { name: "Verlegung Hand/Automatik", einheit: "" },
+        { name: "Maschinentyp Spuler", einheit: "", angabe: 1, vorschlaege: ["SG145.1.F.E"] },
+        { name: "Verlegung Hand/Automatik", einheit: "", vorschlaege: ["Hand", "Automatik"] },
         { name: "Spulenkern-Einstellung", einheit: "mm" },
         { name: "Tänzer Spuler", einheit: "g + mm" },
         { name: "Zugkraft Aufwickelspannung", einheit: "cN" },
@@ -158,7 +168,7 @@ const FORMULARE = {
     gruppen: [
       { gruppe: "Maschine", felder: [
         { name: "Geschwindigkeit Soll/Ist", einheit: "m/s" },
-        { name: "Werkstoff Kontaktband", einheit: "Kupfer/Nickel" },
+        { name: "Werkstoff Kontaktband", einheit: "", vorschlaege: ["Kupfer", "Nickel"] },
         { name: "Umlegung in der Maschine", einheit: "Anzahl" },
         { name: "Umlegung auf der Abzugscheibe", einheit: "Anzahl" },
       ] },
@@ -672,7 +682,7 @@ function renderWizSchritt() {
     gruppenName = g.gruppe;
     inhaltHtml = g.felder.map((f, idx) => {
       const gewaehlt = wiz.werte[f.name] || "";
-      const vorschlaege = vorhandeneWerte(f.name);
+      const vorschlaege = vorhandeneWerte(f);
       const chips = vorschlaege.map(w =>
         `<button type="button" class="wchip ${gewaehlt === w ? "aktiv" : ""}" data-wiz-wert="${esc(f.name)}" data-wert="${esc(w)}">${esc(w)}</button>`).join("");
       const eigener = (gewaehlt && vorschlaege.indexOf(gewaehlt) === -1) ? gewaehlt : "";
@@ -715,7 +725,7 @@ function renderRuestCheck() {
   if (!r) { state.rezept = null; return render(); }
   titel.textContent = r.kuerzel + " " + r.aufbau;
   const soll = r.soll || {}, status = r.ruest_status || {};
-  const felder = formularFelder(r.formular).filter(f => soll[f.name] != null && soll[f.name] !== "");
+  const felder = formularFelder(r.formular).filter(f => !f.angabe && soll[f.name] != null && soll[f.name] !== "");
   const g = felder.length, ok = felder.filter(f => status[f.name] && status[f.name].erledigt).length;
   const punkte = felder.map(f => {
     const st = status[f.name] || {};
@@ -764,15 +774,19 @@ function renderVerlauf() {
     <div class="karte" style="margin-top:12px"><h2>${r ? esc(r.kuerzel + " " + r.aufbau) : "Verlauf"} – frühere Rüstungen</h2>${liste}</div>`;
 }
 
-// Werte, die für dieses Feld schon benutzt wurden – häufigste zuerst (für die Auswahlknöpfe)
-function vorhandeneWerte(feldName) {
+// Auswahlknöpfe eines Feldes: bisher benutzte Werte (häufigste zuerst),
+// danach die üblichen Vorschläge, die noch nicht dabei sind.
+function vorhandeneWerte(feld) {
+  const name = (typeof feld === "string") ? feld : feld.name;
   const zaehler = {};
   rezepte().forEach(r => {
-    const v = (r.soll || {})[feldName];
+    const v = (r.soll || {})[name];
     if (v) zaehler[v] = (zaehler[v] || 0) + 1;
-    (r.historie || []).forEach(h => { const hv = (h.soll || {})[feldName]; if (hv) zaehler[hv] = (zaehler[hv] || 0) + 1; });
+    (r.historie || []).forEach(h => { const hv = (h.soll || {})[name]; if (hv) zaehler[hv] = (zaehler[hv] || 0) + 1; });
   });
-  return Object.keys(zaehler).sort((a, b) => zaehler[b] - zaehler[a]).slice(0, 6);
+  const benutzt = Object.keys(zaehler).sort((a, b) => zaehler[b] - zaehler[a]);
+  const vorschlaege = (typeof feld === "object" && feld.vorschlaege) ? feld.vorschlaege : [];
+  return benutzt.concat(vorschlaege.filter(v => benutzt.indexOf(v) === -1)).slice(0, 6);
 }
 
 function diffFelder(alt, neu) {
@@ -875,7 +889,7 @@ function ruestAbschluss(id) {
   if (!r) return;
   const soll = r.soll || {}, status = r.ruest_status || {};
   const ist = {};
-  formularFelder(r.formular).filter(f => soll[f.name] != null && soll[f.name] !== "").forEach(f => {
+  formularFelder(r.formular).filter(f => !f.angabe && soll[f.name] != null && soll[f.name] !== "").forEach(f => {
     const st = status[f.name] || {};
     ist[f.name] = { soll: soll[f.name], wert: st.ist || "", erledigt: !!st.erledigt };
   });
@@ -1369,6 +1383,11 @@ function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("sp
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "3.2": [
+    "Verlegung Hand/Automatik als Auswahl, ebenso Spulengröße und Kontaktband",
+    "Maschinentypen und KSS-Produkte sind jetzt änderbar – üblicher Wert als Knopf",
+    "Diese Angaben stehen im PDF, aber nicht in der Rüst-Checkliste",
+  ],
   "3.1": [
     "Erstmuster-PDF: Ersteller und Datum werden automatisch eingetragen",
   ],

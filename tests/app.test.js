@@ -180,6 +180,36 @@ module.exports = async function () {
   check("Formular wird mitgespeichert", va && va.formular === "va013f3");
   check("Liste zeigt den Formularnamen", d.getElementById("inhalt").innerHTML.indexOf("Drahtzug allgemein") !== -1);
 
+  // --- Vorschlagsknöpfe: übliche Werte, aber alles überschreibbar ---
+  tab("ruesten");
+  d.querySelector("[data-rezept-neu]").click();
+  d.querySelector("[data-wiz-leer]").click();
+  stamm({ kuerzel: "DROP", aufbau: "1x1" });
+  weiter(); weiter(); weiter(); weiter();      // -> Spuler
+  check("Verlegung: Knopf Hand vorhanden", d.querySelector('[data-wiz-wert="Verlegung Hand/Automatik"][data-wert="Hand"]') !== null);
+  check("Verlegung: Knopf Automatik vorhanden", d.querySelector('[data-wiz-wert="Verlegung Hand/Automatik"][data-wert="Automatik"]') !== null);
+  check("Spulengröße: 250/350/560 als Knöpfe", d.querySelector('[data-wiz-wert="Spulengröße"][data-wert="350"]') !== null);
+  check("Maschinentyp Spuler ist ein Feld (nicht fest)", d.querySelector('[data-wiz-wert="Maschinentyp Spuler"]') !== null);
+  d.querySelector('[data-wiz-wert="Verlegung Hand/Automatik"][data-wert="Automatik"]').click();
+  weiter();                                     // speichern
+  const drop = S("rezepte").find(r => r.kuerzel === "DROP");
+  check("Auswahl wurde gespeichert", drop && drop.soll["Verlegung Hand/Automatik"] === "Automatik");
+
+  // Angaben wie Maschinentyp stehen nicht in der Rüst-Checkliste
+  d.querySelector("[data-rezept]").click();          // neuestes Muster (DROP) öffnen
+  d.querySelector("[data-rezept-bearbeiten]").click();
+  weiter(); weiter(); weiter();                 // Draht-Typ -> Ablauf -> Ziehen -> Glühe
+  const kssKnopf = d.querySelector('[data-wiz-wert="KSS-Produkt Glühe"]');
+  check("KSS-Produkt Glühe hat den üblichen Wert als Knopf", kssKnopf !== null && kssKnopf.dataset.wert.indexOf("Bechem") !== -1);
+  kssKnopf.click();
+  weiter(); weiter();                           // Spuler, dann Fertig
+  const drop2 = S("rezepte").find(r => r.kuerzel === "DROP");
+  check("KSS-Produkt gespeichert", drop2.soll["KSS-Produkt Glühe"].indexOf("Bechem") !== -1);
+  // nach dem Bearbeiten ist die Checkliste bereits offen
+  const namen = Array.from(d.querySelectorAll(".rpunkt .p-name")).map(e => e.textContent);
+  check("Checkliste zeigt Einstellwert (Verlegung)", namen.indexOf("Verlegung Hand/Automatik") !== -1);
+  check("Checkliste zeigt keine Angaben (KSS-Produkt)", namen.indexOf("KSS-Produkt Glühe") === -1);
+
   // --- Erstmuster senden: Knopf vorhanden und erzeugt ein PDF zum Teilen ---
   tab("ruesten");
   d.querySelector("[data-rezept]").click();
