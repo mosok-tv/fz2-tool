@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "4.3";
+const APP_VERSION = "4.4";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -718,7 +718,7 @@ function renderErstmusterDetail() {
       <div><b>${esc(n.feld)}</b>${n.einheit ? ` <span class="einheit">${esc(n.einheit)}</span>` : ""}</div>
       <div style="font-size:.92rem">Soll <span class="alt-wert">${esc(n.soll)}</span> · gefahren <b>${esc(n.ist)}</b></div>
       ${n.grund ? `<div style="font-size:.9rem">${esc(n.grund)}</div>` : `<div class="meta">kein Grund angegeben</div>`}
-      <div class="meta">${esc(n.datum)}${n.benutzer ? " · " + esc(n.benutzer) : ""}</div>
+      <div class="meta">${n.maschine ? esc(n.maschine) + " · " : ""}${esc(n.datum)}${n.benutzer ? " · " + esc(n.benutzer) : ""}</div>
       <button class="btn btn-klein btn-grau" data-nl-erledigt="${n.id}" style="margin-top:6px">Erledigt – nicht mehr melden</button>
     </div>`).join("") : `<div class="leer">Keine offenen Notlösungen.</div>`;
 
@@ -1044,7 +1044,8 @@ function uebernehmeAbweichungen() {
 function speichereNotloesungen(mitGrund) {
   const a = state.abweichung, list = notloesungen();
   a.felder.forEach(f => {
-    list.push({ id: neueId(), rezept_id: a.rezept_id, feld: f.name, soll: f.soll, ist: f.ist,
+    list.push({ id: neueId(), rezept_id: a.rezept_id, maschine: a.maschine || "",
+                feld: f.name, soll: f.soll, ist: f.ist,
                 einheit: f.einheit || "", grund: mitGrund ? String(f.grund || "").trim() : "",
                 datum: jetzt(), benutzer: wer(), erledigt: false, versendet_am: null });
   });
@@ -1245,7 +1246,7 @@ function ruestAbschluss(id) {
   }
   flash(maschine ? "Gerüstet – läuft jetzt auf " + maschine + "." : "Rüstung im Verlauf gespeichert.");
   // Wich ein Wert vom Erstmuster ab? Dann gleich klären, ob das der neue Stand ist
-  if (abweichungen.length) state.abweichung = { rezept_id: id, felder: abweichungen, phase: "frage" };
+  if (abweichungen.length) state.abweichung = { rezept_id: id, maschine: maschine, felder: abweichungen, phase: "frage" };
   render(); window.scrollTo(0, 0);
 }
 
@@ -1678,7 +1679,8 @@ document.addEventListener("click", e => {
     DB.set("rezepte", rezepte().filter(r => r.id !== el.dataset.emLoeschen));
     state.emDetail = null; flash("Erstmuster gelöscht."); render(); window.scrollTo(0, 0);
   }
-  else if (el.dataset.rezeptZurueck) { state.rezeptForm = null; wiz = null; state.verlauf = null; render(); window.scrollTo(0, 0); }
+  // gilt für den Assistenten und für die Rüst-Checkliste – beide zurück zur Liste
+  else if (el.dataset.rezeptZurueck) { state.rezeptForm = null; wiz = null; state.verlauf = null; state.rezept = null; render(); window.scrollTo(0, 0); }
   else if (el.dataset.rezeptSpeichern) speichereRezept();
   else if (el.dataset.rezeptBearbeiten) { state.rezeptForm = el.dataset.rezeptBearbeiten; state.emDetail = el.dataset.rezeptBearbeiten; wizStart(el.dataset.rezeptBearbeiten); render(); window.scrollTo(0, 0); }
   else if (el.dataset.verlauf) { state.verlauf = el.dataset.verlauf; state.rezept = null; render(); window.scrollTo(0, 0); }
@@ -1827,6 +1829,10 @@ function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("sp
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "4.4": [
+    "Notlösungen zeigen jetzt die Maschine – in der App und im PDF",
+    "Behoben: Zurück in der Rüst-Checkliste ging nicht zurück zur Liste",
+  ],
   "4.3": [
     "Nach dem Rüsten fragt die App bei Abweichungen: neuer Stand oder Notlösung",
     "Notlösungen werden mit Grund festgehalten",

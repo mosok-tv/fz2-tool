@@ -359,7 +359,7 @@ function anlageZeichnen(doc, form, r, anlage, seite, seiten, ersteller, datum) {
     o += 12;
     o = anlageZeile(doc, o, ["Wert", "Soll", "gefahren"], true);
     notl.forEach(n => {
-      const zusatz = [String(n.datum).split(" ")[0], n.benutzer, n.grund].filter(Boolean).join(" - ");
+      const zusatz = [n.maschine, String(n.datum).split(" ")[0], n.benutzer, n.grund].filter(Boolean).join(" - ");
       const h = zusatz ? ZH + 11 : ZH + 1;
       const start = o;
       o = anlageZeile(doc, o, [n.feld + (n.einheit ? " (" + n.einheit + ")" : ""), n.soll || "-", n.ist || "-"], false, h);

@@ -63,7 +63,7 @@ module.exports = async function () {
       { name: "Glühspannung", alt: "400", neu: "395", diff: "-5", einheit: "V" },
     ],
     notloesungen: [
-      { feld: "Zugkraft Aufwickelspannung", soll: "400", ist: "350", einheit: "cN",
+      { feld: "Zugkraft Aufwickelspannung", soll: "400", ist: "350", einheit: "cN", maschine: "Z49",
         grund: "Spule lief unruhig", datum: "02.08.2026 21:40", benutzer: "friedl" },
       { feld: "Trocknungssteine", soll: "1,2", ist: "1,0", einheit: "mm",
         grund: "", datum: "29.07.2026 14:02", benutzer: "güntzel" },
@@ -77,6 +77,7 @@ module.exports = async function () {
   check("Block A mit alt und neu", inA("1,20") && inA("1,15") && inA("-0,05"));
   check("Block B mit Soll und gefahren", inA("350") && mA.indexOf("Notl\xf6sungen beim R\xfcsten") !== -1);
   check("Grund steht in der Anlage", mA.indexOf("Spule lief unruhig") !== -1);
+  check("Maschine steht in der Anlage", mA.indexOf("Z49 - 02.08.2026 - friedl") !== -1);
   check("Notlösung ohne Grund nennt trotzdem Datum und Namen", mA.indexOf("29.07.2026 - g\xfcntzel") !== -1);
   check("Stand steht im Fuß von Seite 1", mA.indexOf("(Stand 4 vom 04.08.2026)") !== -1);
   check("Seitenzählung berücksichtigt die Anlage", mA.indexOf("(Seite 1 von 2)") !== -1);

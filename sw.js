@@ -1,5 +1,5 @@
 /* Service Worker – macht die App offline nutzbar. Version bei Änderungen erhöhen. */
-const CACHE = "drahtzug-v28";
+const CACHE = "drahtzug-v29";
 const DATEIEN = [
   "./", "index.html", "style.css", "app.js", "pdf.js", "manifest.json",
   "icon-180.png", "icon-192.png", "icon-512.png",

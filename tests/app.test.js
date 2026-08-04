@@ -160,6 +160,7 @@ module.exports = async function () {
   check("Notlösung gespeichert", S("notloesungen").length === 1
     && S("notloesungen")[0].ist === "17,5" && S("notloesungen")[0].soll === "18");
   check("Grund gespeichert", S("notloesungen")[0].grund === "Draht riss bei 18");
+  check("Notlösung merkt sich die Maschine", S("notloesungen")[0].maschine === "Z49");
   check("Sollwert bleibt unverändert", S("rezepte")[0].soll["Ziehgeschwindigkeit"] === "18");
   check("Notlösung erzeugt keinen neuen Stand", (S("rezepte")[0].historie || []).length === 0);
 
@@ -167,6 +168,11 @@ module.exports = async function () {
   d.querySelector("[data-rezept]").click();
   check("Rüst-Checkliste ohne Bearbeiten", d.querySelector("[data-rezept-bearbeiten]") === null);
   check("Rüst-Checkliste ohne PDF-Versand", d.querySelector("[data-erstmuster]") === null);
+  // falsches Muster erwischt: Zurück muss wieder zur Liste führen
+  d.querySelector("[data-rezept-zurueck]").click();
+  check("Zurück führt zur Muster-Liste", d.getElementById("ruest-liste") !== null
+    && d.querySelector(".rpunkt") === null);
+  d.querySelector("[data-rezept]").click();
 
   // --- Derzeit laufend: Ergebnis der Rüstung landet bei der Maschine ---
   check("Z49 als laufend vermerkt", S("laufend").Z49 && S("laufend").Z49.kuerzel === "VSW");
