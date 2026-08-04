@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "4.1";
+const APP_VERSION = "4.2";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -203,6 +203,24 @@ const STANDARD_FORMULAR = "1350";
 function formularGruppen(id) { return (FORMULARE[id] || FORMULARE[STANDARD_FORMULAR]).gruppen; }
 function formularFelder(id) { return formularGruppen(id).flatMap(g => g.felder); }
 function formularName(id) { return (FORMULARE[id] || FORMULARE[STANDARD_FORMULAR]).name; }
+
+/* Die Zahlen, die an der Maschine sofort sichtbar sein sollen.
+   In den drei Formularen heißen sie unterschiedlich – hier die Feldnamen dazu. */
+const KENNWERTE = [
+  { label: "Geschwindigkeit", felder: ["Ziehgeschwindigkeit", "Ziehgeschwindigkeit + Skala", "Geschwindigkeit Soll/Ist"] },
+  { label: "Glühfaktor", felder: ["Glühfaktor", "Faktor (Glüh-/Bereichseinstellung)"] },
+  { label: "Zugkraft Aufwickler", felder: ["Zugkraft Aufwickelspannung", "Zugspannung Spuler Soll/Ist"] },
+];
+function kennwerte(formular, ist) {
+  ist = ist || {};
+  const felder = formularFelder(formular);
+  return KENNWERTE.map(k => {
+    const name = k.felder.find(n => ist[n] && (ist[n].wert || ist[n].soll));
+    if (!name) return null;
+    const e = ist[name], f = felder.find(x => x.name === name) || {};
+    return { label: k.label, wert: e.wert || e.soll, einheit: f.einheit || "", nurSoll: !e.wert };
+  }).filter(Boolean);
+}
 function neueId()  { return (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2)); }
 
 /* ---------- Hilfsfunktionen ---------- */
@@ -248,7 +266,7 @@ window.addEventListener("error", e => logFehler("Programmfehler", e.message, (e.
 window.addEventListener("unhandledrejection", e => logFehler("Programmfehler", (e.reason && e.reason.message) || e.reason, e.reason && e.reason.stack));
 
 /* ---------- Router ---------- */
-const state = { view: "maschinen", maschine: null, overlay: null, rezept: null, rezeptForm: null, verlauf: null, vergleich: null, emDetail: null };
+const state = { view: "maschinen", maschine: null, overlay: null, rezept: null, rezeptForm: null, verlauf: null, vergleich: null, emDetail: null, rvergleich: null };
 let spModus = "summe";  // Berechnungsart der Vorzüge: "summe" | "kleinster"
 let ruestSuche = "";    // Suchbegriff im Rüsten-Bereich
 let emSuche = "";       // Suchbegriff im Erstmuster-Bereich
@@ -261,12 +279,14 @@ const titel = document.getElementById("kopf-titel");
 function zeige(view) {
   state.view = view; state.overlay = null; state.maschine = null; state.rezept = null;
   state.rezeptForm = null; state.verlauf = null; state.vergleich = null; state.emDetail = null;
+  state.rvergleich = null;
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("aktiv", t.dataset.view === view));
   render();
   window.scrollTo(0, 0);
 }
 function render() {
   if (state.overlay === "fehler") return renderFehler();
+  if (state.rvergleich) return renderRuestVergleich();   // aus jedem Bereich erreichbar
   if (state.view === "maschinen" && state.maschine) return renderMaschineDetail();
   if (state.view === "ruesten") {
     if (state.verlauf) return renderVerlauf();
@@ -336,24 +356,27 @@ function renderMaschineDetail() {
     <div class="karte"><h2>Verlauf</h2>${histHtml}</div>`;
 }
 
-/* Karte „Derzeit laufend" – kommt vom Abschluss einer Rüstung, kein Verlauf */
+/* Karte „Derzeit laufend" – kommt vom Abschluss einer Rüstung, kein Verlauf.
+   Absichtlich kurz: nur der Draht und die drei Zahlen, die an der Maschine zählen. */
 function laufendHtml(m) {
   const l = laufend()[m];
   if (!l) return `<div class="karte laufend leer-lauf" style="margin-top:12px">
     <div class="lauf-kopf">Derzeit laufend</div>
     <div class="leer">Nichts gerüstet. Nach „Rüstung abschließen" im Bereich Rüsten steht hier, was läuft.</div></div>`;
-  const werte = Object.keys(l.ist || {}).map(k => {
-    const i = l.ist[k];
-    return `<div class="v-zeile"><span>${esc(k)}</span><span>Soll ${esc(i.soll || "–")}${i.wert ? " · Ist <b>" + esc(i.wert) + "</b>" : ""}</span></div>`;
-  }).join("");
+  const werte = kennwerte(l.formular, l.ist).map(k =>
+    `<div class="v-zeile"><span>${esc(k.label)}</span><span><b>${esc(k.wert)}</b>${k.einheit ? ` <span class="einheit">${esc(k.einheit)}</span>` : ""}${k.nurSoll ? ' <span class="meta">(Soll)</span>' : ""}</span></div>`).join("");
+  const vergleichbar = ruestungenVon(l.rezept_id).length > 1;
   return `
     <div class="karte laufend" style="margin-top:12px">
       <div class="lauf-kopf">Derzeit laufend</div>
       <div class="lauf-draht">${esc(drahtName(l))}</div>
-      ${l.klartext ? `<div class="lauf-text">${esc(l.klartext)}</div>` : ""}
-      <div class="meta">gerüstet ${esc(l.seit || "")}${l.benutzer ? " · " + esc(l.benutzer) : ""}</div>
+      ${l.klartext || l.auftrag ? `<div class="lauf-text">${esc([l.klartext, l.auftrag ? "Auftrag " + l.auftrag : ""].filter(Boolean).join(" · "))}</div>` : ""}
+      <div class="meta">${esc(formularName(l.formular))} · gerüstet ${esc(l.seit || "")}${l.benutzer ? " · " + esc(l.benutzer) : ""}</div>
       ${werte ? `<div class="lauf-werte">${werte}</div>` : ""}
-      <button class="btn btn-klein btn-grau" data-laufend-ende="${esc(m)}" style="margin-top:10px">Läuft nicht mehr</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        ${vergleichbar ? `<button class="btn btn-klein" data-rvergleich="${esc(l.rezept_id)}">Werte vergleichen</button>` : ""}
+        <button class="btn btn-klein btn-grau" data-laufend-ende="${esc(m)}">Läuft nicht mehr</button>
+      </div>
     </div>`;
 }
 
@@ -869,7 +892,89 @@ function renderVerlauf() {
   }).join("") : `<div class="leer">Noch keine abgeschlossene Rüstung.</div>`;
   inhalt.innerHTML = `
     <button class="btn btn-grau btn-klein" data-verlauf-zurueck="${r ? r.id : ''}">‹ Zurück</button>
-    <div class="karte" style="margin-top:12px"><h2>${r ? esc(r.kuerzel + " " + r.aufbau) : "Verlauf"} – frühere Rüstungen</h2>${liste}</div>`;
+    <div class="karte" style="margin-top:12px"><h2>${r ? esc(r.kuerzel + " " + r.aufbau) : "Verlauf"} – frühere Rüstungen</h2>
+      ${eintraege.length > 1 ? `<button class="btn btn-klein" data-rvergleich="${esc(state.verlauf)}" style="margin-bottom:10px">Werte vergleichen</button>` : ""}
+      ${liste}</div>`;
+}
+
+/* ---------- Rüstungen vergleichen: was war beim letzten Mal anders? ---------- */
+function ruestungenVon(rezeptId) { return rezeptId ? ruestungen().filter(x => x.rezept_id === rezeptId) : []; }
+function istZahl(s) { return /^[+-]?\d+([.,]\d+)?$/.test(String(s).trim()); }
+// Nachkommastellen so, wie sie eingetippt wurden – die Differenz soll gleich aussehen
+function nachkomma(a, b) {
+  const n = s => { const m = String(s).match(/[,.](\d+)$/); return m ? m[1].length : 0; };
+  return Math.max(n(a), n(b));
+}
+function wertVon(ist, name) { const e = (ist || {})[name]; return e ? (e.wert || e.soll || "") : ""; }
+
+// Vergleicht zwei abgeschlossene Rüstungen Feld für Feld (in der Reihenfolge des Formulars)
+function vergleicheRuestungen(formular, alt, neu) {
+  const felder = formularFelder(formular);
+  const namen = felder.map(f => f.name);
+  Object.keys(neu.ist || {}).concat(Object.keys(alt.ist || {}))
+    .forEach(n => { if (namen.indexOf(n) === -1) namen.push(n); });
+  return namen.map(n => {
+    const a = wertVon(alt.ist, n), b = wertVon(neu.ist, n);
+    if (!a && !b) return null;
+    const f = felder.find(x => x.name === n) || {};
+    const z = { name: n, alt: a, neu: b, einheit: f.einheit || "", geaendert: a !== b, diff: "", rauf: false };
+    if (z.geaendert && a && b && istZahl(a) && istZahl(b)) {
+      const d = zahl(b) - zahl(a);
+      z.rauf = d > 0;
+      z.diff = (d > 0 ? "+" : "−") + fmt(Math.abs(d), nachkomma(a, b));
+    }
+    return z;
+  }).filter(Boolean);
+}
+
+function renderRuestVergleich() {
+  const rv = state.rvergleich;
+  const r = rezepte().find(x => x.id === rv.rezept_id);
+  const chrono = ruestungenVon(rv.rezept_id);
+  const liste = chrono.slice().reverse();   // neueste zuerst
+  const nr = id => chrono.findIndex(x => x.id === id) + 1;
+  titel.textContent = "Was hat sich geändert?";
+  const zurueck = `<button class="btn btn-grau btn-klein" data-rv-zurueck="1">‹ Zurück</button>`;
+  if (liste.length < 2) {
+    inhalt.innerHTML = `${zurueck}
+      <div class="karte" style="margin-top:12px"><div class="leer">Zum Vergleichen braucht es mindestens zwei abgeschlossene Rüstungen von diesem Muster.</div></div>`;
+    return;
+  }
+  if (!liste.some(x => x.id === rv.a)) rv.a = liste[0].id;
+  if (!liste.some(x => x.id === rv.b) || rv.b === rv.a) rv.b = (liste.find(x => x.id !== rv.a) || liste[1]).id;
+  const neu = liste.find(x => x.id === rv.a), alt = liste.find(x => x.id === rv.b);
+  // Nummer davor: zwei Rüstungen in derselben Minute wären sonst nicht zu unterscheiden
+  const opt = (gewaehlt) => liste.map((x, i) =>
+    `<option value="${esc(x.id)}"${x.id === gewaehlt ? " selected" : ""}>Nr. ${nr(x.id)}${i === 0 ? " (neueste)" : ""} · ${esc(x.datum)}${x.benutzer ? " · " + esc(x.benutzer) : ""}</option>`).join("");
+
+  const zeilen = vergleicheRuestungen(r ? r.formular : null, alt, neu);
+  const geaendert = zeilen.filter(z => z.geaendert), gleich = zeilen.filter(z => !z.geaendert);
+  const zeileHtml = z => `
+    <div class="rv-zeile${z.geaendert ? "" : " gleich"}">
+      <span class="rv-name">${esc(z.name)}${z.einheit ? ` <span class="einheit">${esc(z.einheit)}</span>` : ""}</span>
+      <span class="rv-werte">${z.geaendert
+        ? `<span class="alt-wert">${esc(z.alt || "–")}</span> → <b>${esc(z.neu || "–")}</b>`
+        : `<b>${esc(z.neu || "–")}</b>`}</span>
+      ${z.diff ? `<span class="rv-diff ${z.rauf ? "rauf" : "runter"}">${z.rauf ? "▲" : "▼"} ${esc(z.diff)}${z.einheit ? " " + esc(z.einheit) : ""}</span>`
+        : z.geaendert ? `<span class="rv-diff neutral">geändert</span>` : `<span class="rv-diff neutral">gleich</span>`}
+    </div>`;
+
+  inhalt.innerHTML = `${zurueck}
+    <div class="karte" style="margin-top:12px">
+      <h2>${esc(r ? r.kuerzel + " " + r.aufbau : "Muster")}</h2>
+      <div class="zwei">
+        <div><div class="label">Diese Rüstung</div><select id="rv-a">${opt(rv.a)}</select></div>
+        <div><div class="label">verglichen mit</div><select id="rv-b">${opt(rv.b)}</select></div>
+      </div>
+    </div>
+    <div class="karte">
+      <h2>Geändert (${geaendert.length} von ${zeilen.length})</h2>
+      ${geaendert.length ? geaendert.map(zeileHtml).join("") : `<div class="leer">Nichts geändert – beide Rüstungen sind gleich eingestellt.</div>`}
+    </div>
+    <div class="karte">
+      <button class="btn btn-grau btn-klein" data-rv-alle="1">${rv.alle ? "Unveränderte ausblenden" : "Auch die " + gleich.length + " unveränderten zeigen"}</button>
+      ${rv.alle ? `<div style="margin-top:10px">${gleich.map(zeileHtml).join("") || '<div class="leer">Keine.</div>'}</div>` : ""}
+    </div>`;
 }
 
 // Auswahlknöpfe eines Feldes: bisher benutzte Werte (häufigste zuerst),
@@ -1003,7 +1108,8 @@ function ruestAbschluss(id) {
     // ersetzt, was vorher auf der Maschine lief – das hier ist der aktuelle Stand, kein Verlauf
     const lauf = laufend();
     lauf[maschine] = { rezept_id: id, kuerzel: r.kuerzel, aufbau: r.aufbau, klartext: r.klartext,
-                       formular: r.formular, ist: ist, seit: zeit, benutzer: wer() };
+                       auftrag: r.beispiel_auftrag || "", formular: r.formular,
+                       ist: ist, seit: zeit, benutzer: wer() };
     DB.set("laufend", lauf);
   }
   flash(maschine ? "Gerüstet – läuft jetzt auf " + maschine + "." : "Rüstung im Verlauf gespeichert.");
@@ -1358,7 +1464,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -1465,6 +1571,9 @@ document.addEventListener("click", e => {
     const lauf = laufend(); if (lauf[n]) { delete lauf[n]; DB.set("laufend", lauf); }
     flash("Maschine entfernt."); render();
   }
+  else if (el.dataset.rvergleich) { state.rvergleich = { rezept_id: el.dataset.rvergleich, a: null, b: null, alle: false }; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.rvZurueck) { state.rvergleich = null; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.rvAlle) { state.rvergleich.alle = !state.rvergleich.alle; render(); }
   else if (el.dataset.laufendEnde) {
     const n = el.dataset.laufendEnde;
     if (!confirm("Läuft auf " + n + " nicht mehr?\n\nDie Rüstung bleibt im Rüst-Verlauf erhalten.")) return;
@@ -1504,6 +1613,10 @@ document.getElementById("fehler-knopf").addEventListener("click", () => {
 });
 document.getElementById("wochen-banner").addEventListener("click", wochenberichtMail);
 document.addEventListener("input", e => {
+  if ((e.target.id === "rv-a" || e.target.id === "rv-b") && state.rvergleich) {
+    state.rvergleich[e.target.id === "rv-a" ? "a" : "b"] = e.target.value;
+    render(); return;
+  }
   if (e.target.id === "spulen-suche") { spulenSuche = e.target.value; const l = document.getElementById("spulen-liste"); if (l) l.innerHTML = spulenListeHtml(); return; }
   if (e.target.id === "ruest-suche") { ruestSuche = e.target.value; const l = document.getElementById("ruest-liste"); if (l) l.innerHTML = ruestListeHtml(); return; }
   if (e.target.id === "em-suche") { emSuche = e.target.value; const l = document.getElementById("em-liste"); if (l) l.innerHTML = emListeHtml(); return; }
@@ -1541,6 +1654,12 @@ function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("sp
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "4.2": [
+    "Derzeit laufend zeigt nur noch Draht, Geschwindigkeit, Glühfaktor und Zugkraft Aufwickler",
+    "Neu: Rüstungen desselben Musters vergleichen",
+    "Der Vergleich zeigt, um wieviel ein Wert rauf oder runter ging (z. B. Glühfaktor −0,05)",
+    "Unveränderte Werte lassen sich einblenden",
+  ],
   "4.1": [
     "Maschinen kann man unter Mehr selbst anlegen und entfernen",
     "Beim Abschließen einer Rüstung wird die Maschine gewählt",

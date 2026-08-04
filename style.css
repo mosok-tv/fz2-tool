@@ -189,6 +189,16 @@ button { font-family: inherit; cursor: pointer; }
 .rpunkt.ok .p-box { background: var(--green); border-color: var(--green); }
 .rpunkt.ok .p-name { text-decoration: line-through; color: #5b8a63; }
 .v-zeile { display: flex; justify-content: space-between; gap: 10px; font-size: .85rem; padding: 3px 0; }
+
+/* Rüstungen vergleichen */
+.rv-zeile { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 9px 0; border-bottom: 1px solid var(--linie); }
+.rv-zeile.gleich { opacity: .65; }
+.rv-name { font-size: .9rem; font-weight: 600; }
+.rv-werte { font-size: .9rem; text-align: right; }
+.rv-diff { grid-column: 2; font-size: .82rem; font-weight: 700; text-align: right; white-space: nowrap; }
+.rv-diff.rauf { color: var(--green); }
+.rv-diff.runter { color: var(--red); }
+.rv-diff.neutral { color: var(--grau); font-weight: 400; }
 .rz-vers { display: inline-block; font-size: .72rem; color: var(--grau); background: #f0f3f6; border: 1px solid var(--linie); border-radius: 20px; padding: 1px 8px; margin-left: 4px; }
 .alt-wert { color: #b0392b; text-decoration: line-through; }
 

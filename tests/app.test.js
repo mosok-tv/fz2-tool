@@ -119,7 +119,9 @@ module.exports = async function () {
   stamm({ kuerzel: "VSW", aufbau: "6x0,050", klartext: "versilbert weich", maschine: "Z49" });
   weiter(); weiter();                       // -> Ziehen
   wizWert("Ziehgeschwindigkeit", "18");
-  weiter(); weiter(); weiter();             // Glühe, Spuler, Fertig
+  weiter();                                 // -> Glühe
+  wizWert("Glühfaktor", "1,20");
+  weiter(); weiter();                       // Spuler, Fertig
   check("Muster gespeichert", S("rezepte").length === 1 && S("rezepte")[0].kuerzel === "VSW");
   check("Muster trägt Benutzer", S("rezepte")[0].benutzer === "güntzel");
 
@@ -134,7 +136,7 @@ module.exports = async function () {
   check("Rüst-Suche findet VSW", d.getElementById("ruest-liste").innerHTML.indexOf("VSW") !== -1);
   setVal(d.getElementById("ruest-suche"), "");
   d.querySelector("[data-rezept]").click();
-  check("Checkliste zeigt 1 Punkt", d.querySelectorAll(".rpunkt").length === 1);
+  check("Checkliste zeigt 2 Punkte", d.querySelectorAll(".rpunkt").length === 2);
   check("Zeile hat Name, Soll und Ist-Feld",
     d.querySelector(".rpunkt .p-name") && d.querySelector(".rpunkt .p-soll b") && d.querySelector(".rpunkt .p-body .p-ist"));
   d.querySelector(".rpunkt").click();
@@ -189,6 +191,41 @@ module.exports = async function () {
   d.querySelector('[data-maschine-loeschen="Z90"]').click();
   check("Maschine entfernt", S("maschinen").indexOf("Z90") === -1);
   check("Einträge bleiben nach dem Entfernen", S("entries").some(e => e.machine === "Z90"));
+
+  // --- Zweite Rüstung: laufende Kennwerte und Vergleich ---
+  tab("ruesten");
+  d.querySelector("[data-rezept]").click();
+  d.querySelectorAll(".rpunkt").forEach(p => p.click());
+  setVal(d.querySelectorAll(".p-ist")[0], "18,5");   // Geschwindigkeit rauf
+  setVal(d.querySelectorAll(".p-ist")[1], "1,20");   // Glühfaktor gleich wie beim ersten Mal
+  d.querySelector("[data-ruest-abschluss]").click();
+  check("zweite Rüstung gespeichert", S("ruestungen").length === 2);
+
+  tab("maschinen");
+  d.querySelector('[data-maschine="Z49"]').click();
+  const karte = d.querySelector(".karte.laufend");
+  check("Laufend zeigt nur die Kennwerte", karte.querySelectorAll(".v-zeile").length === 2);
+  check("Laufend nennt Geschwindigkeit und Glühfaktor",
+    karte.textContent.indexOf("Geschwindigkeit") !== -1 && karte.textContent.indexOf("Glühfaktor") !== -1);
+  check("Laufend zeigt den Ist-Wert", karte.textContent.indexOf("18,5") !== -1);
+  check("Laufend nennt nicht den langen Feldnamen", karte.textContent.indexOf("Ziehgeschwindigkeit") === -1);
+
+  d.querySelector("[data-rvergleich]").click();
+  const rv = () => d.getElementById("inhalt");
+  check("Vergleich offen", d.querySelectorAll(".rv-zeile").length >= 1);
+  const geaendert = Array.from(d.querySelectorAll(".rv-zeile")).map(z => z.textContent);
+  check("nur der geänderte Wert steht oben", geaendert.length === 1
+    && geaendert[0].indexOf("Ziehgeschwindigkeit") !== -1);
+  check("alt -> neu wird gezeigt", geaendert[0].indexOf("17,5") !== -1 && geaendert[0].indexOf("18,5") !== -1);
+  check("Differenz +1 mit Einheit", geaendert[0].replace(/\s+/g, " ").indexOf("+1,0 m/s") !== -1);
+  check("Anstieg ist grün markiert", d.querySelector(".rv-diff.rauf") !== null);
+  check("Zähler 1 von 2", rv().innerHTML.indexOf("Geändert (1 von 2)") !== -1);
+  d.querySelector("[data-rv-alle]").click();
+  check("unveränderte einblendbar", d.querySelectorAll(".rv-zeile.gleich").length === 1
+    && d.querySelector(".rv-zeile.gleich").textContent.indexOf("Glühfaktor") !== -1);
+  d.querySelector("[data-rv-zurueck]").click();
+  check("zurück zur Maschine", d.querySelector(".karte.laufend") !== null);
+  d.querySelector("[data-zurueck]").click();
 
   // Änderung erzeugt eine Version – jetzt über den Erstmuster-Bereich
   tab("erstmuster");
