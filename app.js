@@ -1,11 +1,12 @@
 "use strict";
 
-const APP_VERSION = "4.0";
+const APP_VERSION = "4.1";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
 /* ---------- Feste Vorgaben (nicht ohne Rücksprache ändern) ---------- */
-const MASCHINEN = ["Z49", "Z67", "Z68", "Z78", "Z82", "Z83"];
+// Ausgangsliste – im Bereich „Mehr" kann jeder eigene Maschinen anlegen oder entfernen
+const MASCHINEN_STANDARD = ["Z49", "Z67", "Z68", "Z78", "Z82", "Z83"];
 const STATUS = {
   produktion: { label: "Produktion", farbe: "green" },
   umbau:      { label: "Umbau",      farbe: "yellow" },
@@ -72,6 +73,10 @@ function rezepte() { return DB.get("rezepte", []); }
 function ruestungen() { return DB.get("ruestungen", []); }
 function benutzerListe() { return DB.get("benutzer", []); }
 function wer() { return DB.get("angemeldet", "") || ""; }
+// Maschinenliste: selbst angelegt, sonst die Ausgangsliste
+function maschinen() { const m = DB.get("maschinen", null); return Array.isArray(m) ? m : MASCHINEN_STANDARD.slice(); }
+// Was gerade auf einer Maschine läuft: { "Z49": { kuerzel, aufbau, ... } }
+function laufend() { const l = DB.get("laufend", null); return (l && typeof l === "object") ? l : {}; }
 
 /* Erstmuster-Formulare des Drahtwerks. Je Formular die Werte, die der
    Maschinenbediener einstellt (im Blatt mit * gekennzeichnet). */
@@ -284,20 +289,27 @@ function letzterEintrag(m) {
 }
 function renderMaschinen() {
   titel.textContent = "Schichtübergabe";
-  let kacheln = MASCHINEN.map(m => {
+  const liste = maschinen(), lauf = laufend();
+  let kacheln = liste.map(m => {
     const e = letzterEintrag(m), farbe = e ? STATUS[e.status].farbe : "none";
     const txt = e ? STATUS[e.status].label : "kein Eintrag";
-    return `<button class="kopf-kachel bg-${farbe}" data-maschine="${m}">${m}<small>${esc(txt)}</small></button>`;
+    const l = lauf[m];
+    const draht = l ? `<small class="kachel-draht">${esc(drahtName(l))}</small>` : "";
+    return `<button class="kopf-kachel bg-${farbe}" data-maschine="${m}">${esc(m)}<small>${esc(txt)}</small>${draht}</button>`;
   }).join("");
+  if (!liste.length) kacheln = `<div class="leer" style="grid-column:1/-1">Noch keine Maschine angelegt – unter „Mehr" hinzufügen.</div>`;
 
-  const mitNotiz = MASCHINEN.map(letzterEintrag).filter(e => e && e.note);
+  const mitNotiz = liste.map(letzterEintrag).filter(e => e && e.note);
   let status = mitNotiz.length
-    ? mitNotiz.map(e => `<div class="eintrag"><b>${e.machine}</b> <span class="stat" style="color:var(--${STATUS[e.status].farbe})">${STATUS[e.status].label}</span> – ${esc(e.note)}<div class="meta">${e.created_at}${e.benutzer ? " · " + esc(e.benutzer) : ""}</div></div>`).join("")
+    ? mitNotiz.map(e => `<div class="eintrag"><b>${esc(e.machine)}</b> <span class="stat" style="color:var(--${STATUS[e.status].farbe})">${STATUS[e.status].label}</span> – ${esc(e.note)}<div class="meta">${e.created_at}${e.benutzer ? " · " + esc(e.benutzer) : ""}</div></div>`).join("")
     : `<div class="leer">Keine Notizen vorhanden.</div>`;
 
   inhalt.innerHTML = `<div class="grid">${kacheln}</div>
     <div class="karte"><h2>Maschinen-Status</h2>${status}</div>`;
 }
+
+/* Kurzname des laufenden Drahts, z. B. „VSW 6×0,050" */
+function drahtName(l) { return [l.kuerzel, l.aufbau].filter(Boolean).join(" ") || l.klartext || "gerüstet"; }
 
 function renderMaschineDetail() {
   const m = state.maschine;
@@ -312,6 +324,7 @@ function renderMaschineDetail() {
 
   inhalt.innerHTML = `
     <button class="btn btn-grau btn-klein" data-zurueck="1">‹ Zurück</button>
+    ${laufendHtml(m)}
     <div class="karte" style="margin-top:12px">
       <h2>Neuer Eintrag für ${m}</h2>
       <div class="label">Status</div>
@@ -321,6 +334,27 @@ function renderMaschineDetail() {
       <button class="btn" data-speichern-eintrag="1" style="margin-top:12px">Eintrag speichern</button>
     </div>
     <div class="karte"><h2>Verlauf</h2>${histHtml}</div>`;
+}
+
+/* Karte „Derzeit laufend" – kommt vom Abschluss einer Rüstung, kein Verlauf */
+function laufendHtml(m) {
+  const l = laufend()[m];
+  if (!l) return `<div class="karte laufend leer-lauf" style="margin-top:12px">
+    <div class="lauf-kopf">Derzeit laufend</div>
+    <div class="leer">Nichts gerüstet. Nach „Rüstung abschließen" im Bereich Rüsten steht hier, was läuft.</div></div>`;
+  const werte = Object.keys(l.ist || {}).map(k => {
+    const i = l.ist[k];
+    return `<div class="v-zeile"><span>${esc(k)}</span><span>Soll ${esc(i.soll || "–")}${i.wert ? " · Ist <b>" + esc(i.wert) + "</b>" : ""}</span></div>`;
+  }).join("");
+  return `
+    <div class="karte laufend" style="margin-top:12px">
+      <div class="lauf-kopf">Derzeit laufend</div>
+      <div class="lauf-draht">${esc(drahtName(l))}</div>
+      ${l.klartext ? `<div class="lauf-text">${esc(l.klartext)}</div>` : ""}
+      <div class="meta">gerüstet ${esc(l.seit || "")}${l.benutzer ? " · " + esc(l.benutzer) : ""}</div>
+      ${werte ? `<div class="lauf-werte">${werte}</div>` : ""}
+      <button class="btn btn-klein btn-grau" data-laufend-ende="${esc(m)}" style="margin-top:10px">Läuft nicht mehr</button>
+    </div>`;
 }
 
 /* ---------- Ansicht: Aufgaben ---------- */
@@ -335,7 +369,7 @@ function renderAufgaben() {
       <button class="btn btn-klein btn-rot" data-del-todo="${t.id}" style="margin-top:6px;margin-left:6px">Löschen</button>
     </div>`).join("") : `<div class="leer">Nichts offen. 🎉</div>`;
 
-  const maschinenOpts = MASCHINEN.map(m => `<option value="${m}">${m}</option>`).join("");
+  const maschinenOpts = maschinen().map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join("");
   inhalt.innerHTML = `
     <div class="karte">
       <div class="label">Neue Aufgabe</div>
@@ -807,9 +841,17 @@ function renderRuestCheck() {
     </div>
     <div class="karte"><h2>Einzustellende Werte</h2>
       ${punkte || '<div class="leer">Keine Werte hinterlegt. Rezept bearbeiten und Sollwerte eintragen.</div>'}</div>
-    <div class="karte" style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-klein btn-grau" data-verlauf="${r.id}">Rüst-Verlauf</button>
-      ${g > 0 ? `<button class="btn btn-klein" data-ruest-abschluss="${r.id}">Rüstung abschließen</button>` : ""}
+    <div class="karte">
+      <div class="label">Auf welcher Maschine läuft der Draht?</div>
+      <select id="ruest-maschine">
+        <option value="">– keine Maschine –</option>
+        ${maschinen().map(m => `<option value="${esc(m)}"${m === r.maschine ? " selected" : ""}>${esc(m)}</option>`).join("")}
+      </select>
+      <p class="hinweis">Nach dem Abschließen steht der Draht bei dieser Maschine unter „Derzeit laufend".</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <button class="btn btn-klein btn-grau" data-verlauf="${r.id}">Rüst-Verlauf</button>
+        ${g > 0 ? `<button class="btn btn-klein" data-ruest-abschluss="${r.id}">Rüstung abschließen</button>` : ""}
+      </div>
     </div>
     <p class="hinweis">Werte ändern oder das Blatt versenden: im Bereich Erstmuster.</p>`;
 }
@@ -943,18 +985,29 @@ function setzeIst(feld, wert) {
 function ruestAbschluss(id) {
   const list = rezepte(), r = list.find(x => x.id === id);
   if (!r) return;
+  const wahl = document.getElementById("ruest-maschine");
+  const maschine = wahl ? wahl.value : (r.maschine || "");
   const soll = r.soll || {}, status = r.ruest_status || {};
   const ist = {};
   formularFelder(r.formular).filter(f => !f.angabe && soll[f.name] != null && soll[f.name] !== "").forEach(f => {
     const st = status[f.name] || {};
     ist[f.name] = { soll: soll[f.name], wert: st.ist || "", erledigt: !!st.erledigt };
   });
+  const zeit = jetzt();
   const rl = ruestungen();
-  rl.push({ id: neueId(), rezept_id: id, kuerzel: r.kuerzel, maschine: r.maschine, benutzer: wer(), datum: jetzt(), ist: ist });
+  rl.push({ id: neueId(), rezept_id: id, kuerzel: r.kuerzel, maschine: maschine, benutzer: wer(), datum: zeit, ist: ist });
   DB.set("ruestungen", rl);
   r.ruest_status = {};  // für die nächste Rüstung zurücksetzen
   DB.set("rezepte", list);
-  flash("Rüstung im Verlauf gespeichert."); render(); window.scrollTo(0, 0);
+  if (maschine) {
+    // ersetzt, was vorher auf der Maschine lief – das hier ist der aktuelle Stand, kein Verlauf
+    const lauf = laufend();
+    lauf[maschine] = { rezept_id: id, kuerzel: r.kuerzel, aufbau: r.aufbau, klartext: r.klartext,
+                       formular: r.formular, ist: ist, seit: zeit, benutzer: wer() };
+    DB.set("laufend", lauf);
+  }
+  flash(maschine ? "Gerüstet – läuft jetzt auf " + maschine + "." : "Rüstung im Verlauf gespeichert.");
+  render(); window.scrollTo(0, 0);
 }
 
 /* ---------- Erstmuster als PDF verschicken ---------- */
@@ -1001,6 +1054,17 @@ function renderMehr() {
       <button class="btn btn-grau" data-import="1" style="margin-top:10px">Aus Datei einlesen</button>
     </div>
     <div class="karte">
+      <h2>Maschinen</h2>
+      <p class="hinweis" style="margin-top:0">Diese Maschinen erscheinen als Kacheln in der Schichtübergabe – mit Status, Notizen, Aufgaben und „Derzeit laufend".</p>
+      ${maschinen().map(m => `<div class="eintrag" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <span><b>${esc(m)}</b>${laufend()[m] ? ` <span class="meta">läuft: ${esc(drahtName(laufend()[m]))}</span>` : ""}</span>
+        <button class="btn btn-klein btn-rot" data-maschine-loeschen="${esc(m)}">Entfernen</button>
+      </div>`).join("") || `<div class="leer">Noch keine Maschine angelegt.</div>`}
+      <div class="label" style="margin-top:14px">Neue Maschine</div>
+      <input type="text" id="nm-name" placeholder="z. B. Z49" maxlength="20">
+      <button class="btn" data-maschine-neu="1" style="margin-top:10px">Maschine anlegen</button>
+    </div>
+    <div class="karte">
       <h2>Benutzer</h2>
       <p class="hinweis" style="margin-top:0">Angemeldet als <b>${esc(wer() || "–")}</b>. Jeder Eintrag wird mit dem Namen vermerkt.</p>
       <button class="btn btn-grau" data-abmelden="1">Abmelden</button>
@@ -1044,7 +1108,7 @@ function renderMehr() {
     <div class="karte">
       <h2>Info</h2>
       <p class="hinweis" style="margin-top:0"><b>Drahtzug</b> – Feinzug 2. Läuft offline auf dem Gerät, alle Daten bleiben lokal.
-      Maschinen und Ampel-Status sind fest vorgegeben (Z49–Z83; grün=Produktion, gelb=Umbau, rot=Drahtriss, blau=Reparatur, violett=Abrüsten).</p>
+      Maschinen legst du selbst an; die Ampel-Status sind fest vorgegeben (grün=Produktion, gelb=Umbau, rot=Drahtriss, blau=Reparatur, violett=Abrüsten).</p>
     </div>`;
 }
 
@@ -1074,7 +1138,8 @@ async function codeEntfernen() {
 }
 
 function exportData() {
-  const daten = { version: 1, exportiert: jetzt(), entries: entries(), todos: todos(), spulen: spulen(), rezepte: rezepte(), ruestungen: ruestungen() };
+  const daten = { version: 1, exportiert: jetzt(), entries: entries(), todos: todos(), spulen: spulen(),
+                  rezepte: rezepte(), ruestungen: ruestungen(), maschinen: maschinen(), laufend: laufend() };
   const text = JSON.stringify(daten, null, 2);
   const name = "schichtuebergabe-sicherung.json";
   const blob = new Blob([text], { type: "application/json" });
@@ -1099,6 +1164,8 @@ function importData() {
       if (Array.isArray(d.spulen)) DB.set("spulen", d.spulen);
       if (Array.isArray(d.rezepte)) DB.set("rezepte", d.rezepte);
       if (Array.isArray(d.ruestungen)) DB.set("ruestungen", d.ruestungen);
+      if (Array.isArray(d.maschinen)) DB.set("maschinen", d.maschinen);
+      if (d.laufend && typeof d.laufend === "object") DB.set("laufend", d.laufend);
       flash("Sicherung eingelesen."); render();
     } catch (e) { flash("Datei nicht lesbar."); }
   };
@@ -1291,7 +1358,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -1382,6 +1449,28 @@ document.addEventListener("click", e => {
     DB.set("benutzer", benutzerListe().filter(b => b.name !== el.dataset.benutzerLoeschen));
     flash("Benutzer gelöscht."); render();
   }
+  else if (el.dataset.maschineNeu) {
+    const feld = document.getElementById("nm-name");
+    const n = feld.value.trim().slice(0, 20);
+    if (!n) return flash("Bitte einen Namen eingeben.");
+    const list = maschinen();
+    if (list.some(m => m.toLowerCase() === n.toLowerCase())) return flash("Diese Maschine gibt es schon.");
+    list.push(n); DB.set("maschinen", list);
+    feld.value = ""; flash("Maschine " + n + " angelegt."); render();
+  }
+  else if (el.dataset.maschineLoeschen) {
+    const n = el.dataset.maschineLoeschen;
+    if (!confirm("Maschine " + n + " entfernen?\n\nDie Kachel verschwindet. Bisherige Einträge und Aufgaben bleiben gespeichert.")) return;
+    DB.set("maschinen", maschinen().filter(m => m !== n));
+    const lauf = laufend(); if (lauf[n]) { delete lauf[n]; DB.set("laufend", lauf); }
+    flash("Maschine entfernt."); render();
+  }
+  else if (el.dataset.laufendEnde) {
+    const n = el.dataset.laufendEnde;
+    if (!confirm("Läuft auf " + n + " nicht mehr?\n\nDie Rüstung bleibt im Rüst-Verlauf erhalten.")) return;
+    const lauf = laufend(); delete lauf[n]; DB.set("laufend", lauf);
+    flash("Eintrag entfernt."); render();
+  }
   else if (el.dataset.grossschrift) {
     const an = !DB.get("grossschrift", false);
     DB.set("grossschrift", an);
@@ -1452,6 +1541,12 @@ function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("sp
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "4.1": [
+    "Maschinen kann man unter Mehr selbst anlegen und entfernen",
+    "Beim Abschließen einer Rüstung wird die Maschine gewählt",
+    'Auf der Maschine steht dann „Derzeit laufend": welcher Draht mit welchen Werten',
+    "Die Kachel in der Schichtübergabe zeigt den laufenden Draht mit an",
+  ],
   "4.0": [
     "Die App heißt jetzt Drahtzug",
     "Maschinen heißt jetzt Schichtübergabe",

@@ -94,6 +94,16 @@ button { font-family: inherit; cursor: pointer; }
 .kopf-kachel { border: none; border-radius: 12px; color: #fff; padding: 22px 10px; text-align: center;
   font-size: 1.3rem; font-weight: 700; box-shadow: 0 2px 5px rgba(0,0,0,.15); }
 .kopf-kachel small { display: block; font-size: .8rem; font-weight: 400; margin-top: 6px; opacity: .95; }
+.kopf-kachel .kachel-draht { margin-top: 3px; font-size: .74rem; font-weight: 600; opacity: .9;
+  border-top: 1px solid rgba(255,255,255,.35); padding-top: 4px; word-break: break-word; }
+
+/* Derzeit laufend – aktueller Stand der Maschine, kein Verlauf */
+.karte.laufend { border-left: 5px solid var(--green); }
+.karte.laufend.leer-lauf { border-left-color: var(--none); }
+.lauf-kopf { font-size: .78rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--grau); }
+.lauf-draht { font-size: 1.25rem; font-weight: 700; margin-top: 4px; }
+.lauf-text { font-size: .95rem; color: #45525d; }
+.lauf-werte { margin-top: 10px; border-top: 1px solid var(--linie); padding-top: 8px; }
 .bg-green{background:var(--green)}.bg-yellow{background:var(--yellow)}.bg-red{background:var(--red)}
 .bg-blue{background:var(--blue)}.bg-violet{background:var(--violet)}.bg-none{background:var(--none)}
 .punkt { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 5px; vertical-align: baseline; }

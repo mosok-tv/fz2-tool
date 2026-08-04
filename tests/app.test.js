@@ -142,10 +142,53 @@ module.exports = async function () {
   const ist = d.querySelector(".p-ist");
   setVal(ist, "17,5");
   check("Ist-Wert gespeichert", JSON.stringify(S("rezepte")[0].ruest_status).indexOf("17,5") !== -1);
+  check("Maschinen-Auswahl steht auf Z49", d.getElementById("ruest-maschine").value === "Z49");
   d.querySelector("[data-ruest-abschluss]").click();
   check("Rüstung im Verlauf", S("ruestungen").length === 1 && S("ruestungen")[0].benutzer === "güntzel");
   check("Rüst-Checkliste ohne Bearbeiten", d.querySelector("[data-rezept-bearbeiten]") === null);
   check("Rüst-Checkliste ohne PDF-Versand", d.querySelector("[data-erstmuster]") === null);
+
+  // --- Derzeit laufend: Ergebnis der Rüstung landet bei der Maschine ---
+  check("Z49 als laufend vermerkt", S("laufend").Z49 && S("laufend").Z49.kuerzel === "VSW");
+  check("laufend merkt sich die Werte", S("laufend").Z49.ist["Ziehgeschwindigkeit"].wert === "17,5");
+  tab("maschinen");
+  check("Kachel Z49 zeigt den laufenden Draht",
+    d.querySelector('[data-maschine="Z49"]').textContent.indexOf("VSW") !== -1);
+  check("andere Kachel zeigt keinen Draht",
+    d.querySelector('[data-maschine="Z67"]').textContent.indexOf("VSW") === -1);
+  d.querySelector('[data-maschine="Z49"]').click();
+  check("Maschine zeigt Derzeit laufend", d.querySelector(".karte.laufend .lauf-draht") !== null
+    && d.querySelector(".lauf-draht").textContent.indexOf("VSW") !== -1);
+  check("laufend steht über dem Verlauf",
+    d.getElementById("inhalt").innerHTML.indexOf("Derzeit laufend")
+      < d.getElementById("inhalt").innerHTML.indexOf("<h2>Verlauf</h2>"));
+  d.querySelector("[data-laufend-ende]").click();
+  check("laufend beendet", !S("laufend").Z49);
+  check("Rüst-Verlauf bleibt erhalten", S("ruestungen").length === 1);
+  d.querySelector("[data-zurueck]").click();
+
+  // --- Eigene Maschinen anlegen und entfernen ---
+  tab("mehr");
+  setVal(d.getElementById("nm-name"), "Z90");
+  d.querySelector("[data-maschine-neu]").click();
+  check("Maschine Z90 angelegt", S("maschinen").indexOf("Z90") !== -1);
+  setVal(d.getElementById("nm-name"), "z90");
+  d.querySelector("[data-maschine-neu]").click();
+  check("gleicher Name wird abgelehnt", S("maschinen").filter(m => m.toLowerCase() === "z90").length === 1);
+  tab("maschinen");
+  check("7 Kacheln mit Z90", d.querySelectorAll(".kopf-kachel").length === 7
+    && d.querySelector('[data-maschine="Z90"]') !== null);
+  d.querySelector('[data-maschine="Z90"]').click();
+  d.querySelector('[data-status="produktion"]').click();
+  d.querySelector("[data-speichern-eintrag]").click();
+  check("eigene Maschine kann Einträge", S("entries").some(e => e.machine === "Z90"));
+  tab("aufgaben");
+  check("eigene Maschine in der Aufgaben-Auswahl",
+    d.getElementById("todo-maschine").innerHTML.indexOf("Z90") !== -1);
+  tab("mehr");
+  d.querySelector('[data-maschine-loeschen="Z90"]').click();
+  check("Maschine entfernt", S("maschinen").indexOf("Z90") === -1);
+  check("Einträge bleiben nach dem Entfernen", S("entries").some(e => e.machine === "Z90"));
 
   // Änderung erzeugt eine Version – jetzt über den Erstmuster-Bereich
   tab("erstmuster");
