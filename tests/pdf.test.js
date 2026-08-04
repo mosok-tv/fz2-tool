@@ -55,6 +55,39 @@ module.exports = async function () {
     check("Formular " + k + " passt auf eine Seite", /\/Count 1\b/.test(b));
   });
 
+  // --- Anlage: Seite 2 mit Änderungen und Notlösungen ---
+  const anlage = {
+    stand: 4, versand: { stand: 3, datum: "28.07.2026 06:12", benutzer: "friedl" },
+    aenderungen: [
+      { name: "Glühfaktor", alt: "1,20", neu: "1,15", diff: "-0,05", einheit: "" },
+      { name: "Glühspannung", alt: "400", neu: "395", diff: "-5", einheit: "V" },
+    ],
+    notloesungen: [
+      { feld: "Zugkraft Aufwickelspannung", soll: "400", ist: "350", einheit: "cN",
+        grund: "Spule lief unruhig", datum: "02.08.2026 21:40", benutzer: "friedl" },
+      { feld: "Trocknungssteine", soll: "1,2", ist: "1,0", einheit: "mm",
+        grund: "", datum: "29.07.2026 14:02", benutzer: "güntzel" },
+    ],
+  };
+  const mA = Buffer.from(erstmusterPdf(rezept, "güntzel", "04.08.2026", anlage).teile[0]).toString("latin1");
+  const inA = t => mA.indexOf("(" + t + ")") !== -1;
+  check("Anlage erzeugt eine zweite Seite", /\/Count 2\b/.test(mA));
+  check("Anlage hat Überschrift", mA.indexOf("ANLAGE ZUM ERSTMUSTER") !== -1);
+  check("Anlage nennt beide Stände", mA.indexOf("zuletzt versendet Stand 3") !== -1);
+  check("Block A mit alt und neu", inA("1,20") && inA("1,15") && inA("-0,05"));
+  check("Block B mit Soll und gefahren", inA("350") && mA.indexOf("Notl\xf6sungen beim R\xfcsten") !== -1);
+  check("Grund steht in der Anlage", mA.indexOf("Spule lief unruhig") !== -1);
+  check("Notlösung ohne Grund nennt trotzdem Datum und Namen", mA.indexOf("29.07.2026 - g\xfcntzel") !== -1);
+  check("Stand steht im Fuß von Seite 1", mA.indexOf("(Stand 4 vom 04.08.2026)") !== -1);
+  check("Seitenzählung berücksichtigt die Anlage", mA.indexOf("(Seite 1 von 2)") !== -1);
+
+  // ohne Änderungen und ohne Notlösungen bleibt es einseitig
+  const ohneAnlage = Buffer.from(
+    erstmusterPdf(rezept, "güntzel", "04.08.2026", { stand: 1, versand: null, aenderungen: [], notloesungen: [] }).teile[0]
+  ).toString("latin1");
+  check("leere Anlage hängt keine Seite an", /\/Count 1\b/.test(ohneAnlage));
+  check("Stand steht trotzdem im Fuß", ohneAnlage.indexOf("(Stand 1 vom 04.08.2026)") !== -1);
+
   // unbekannte Formularkennung -> Standard statt Absturz
   const fallback = Buffer.from(erstmusterPdf({ formular: "gibtsnicht", soll: {} }).teile[0]).toString("latin1");
   check("unbekanntes Formular fällt auf 1350 zurück", fallback.indexOf("(WPD-013 1350)") !== -1);

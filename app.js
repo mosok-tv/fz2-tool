@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "4.2";
+const APP_VERSION = "4.3";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -71,6 +71,9 @@ function todos()   { return DB.get("todos", []); }
 function spulen()  { return DB.get("spulen", []); }
 function rezepte() { return DB.get("rezepte", []); }
 function ruestungen() { return DB.get("ruestungen", []); }
+function notloesungen() { return DB.get("notloesungen", []); }
+// Stand eines Erstmusters: jede gespeicherte Änderung legt einen alten Stand in die Historie
+function standVon(r) { return ((r && r.historie && r.historie.length) || 0) + 1; }
 function benutzerListe() { return DB.get("benutzer", []); }
 function wer() { return DB.get("angemeldet", "") || ""; }
 // Maschinenliste: selbst angelegt, sonst die Ausgangsliste
@@ -266,7 +269,7 @@ window.addEventListener("error", e => logFehler("Programmfehler", e.message, (e.
 window.addEventListener("unhandledrejection", e => logFehler("Programmfehler", (e.reason && e.reason.message) || e.reason, e.reason && e.reason.stack));
 
 /* ---------- Router ---------- */
-const state = { view: "maschinen", maschine: null, overlay: null, rezept: null, rezeptForm: null, verlauf: null, vergleich: null, emDetail: null, rvergleich: null };
+const state = { view: "maschinen", maschine: null, overlay: null, rezept: null, rezeptForm: null, verlauf: null, vergleich: null, emDetail: null, rvergleich: null, abweichung: null };
 let spModus = "summe";  // Berechnungsart der Vorzüge: "summe" | "kleinster"
 let ruestSuche = "";    // Suchbegriff im Rüsten-Bereich
 let emSuche = "";       // Suchbegriff im Erstmuster-Bereich
@@ -279,13 +282,14 @@ const titel = document.getElementById("kopf-titel");
 function zeige(view) {
   state.view = view; state.overlay = null; state.maschine = null; state.rezept = null;
   state.rezeptForm = null; state.verlauf = null; state.vergleich = null; state.emDetail = null;
-  state.rvergleich = null;
+  state.rvergleich = null; state.abweichung = null;
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("aktiv", t.dataset.view === view));
   render();
   window.scrollTo(0, 0);
 }
 function render() {
   if (state.overlay === "fehler") return renderFehler();
+  if (state.abweichung) return renderAbweichung();       // direkt nach dem Rüsten
   if (state.rvergleich) return renderRuestVergleich();   // aus jedem Bereich erreichbar
   if (state.view === "maschinen" && state.maschine) return renderMaschineDetail();
   if (state.view === "ruesten") {
@@ -669,15 +673,21 @@ function renderRuesten() {
 }
 
 /* ---------- Erstmuster: anlegen, bearbeiten, versenden ---------- */
+// Zeigt auf einen Blick, ob im Büro noch ein älteres Blatt liegt
+function versandBadge(r) {
+  const stand = standVon(r), v = r.versand;
+  if (!v) return `<span class="em-badge neu">noch nie versendet</span>`;
+  if (v.stand < stand) return `<span class="em-badge alt">Stand ${stand} — versendet war Stand ${v.stand}</span>`;
+  return `<span class="em-badge ok">Stand ${stand} versendet ${esc(String(v.datum).split(" ")[0])}</span>`;
+}
 function emListeHtml() {
   const q = emSuche.trim().toLowerCase();
   const rz = rezepte().slice().reverse().filter(r => !q ||
     [r.kuerzel, r.aufbau, r.klartext, r.maschine, r.beispiel_auftrag].join(" ").toLowerCase().indexOf(q) !== -1);
   if (!rz.length) return `<div class="leer">${emSuche ? "Kein Erstmuster gefunden." : "Noch kein Erstmuster angelegt."}</div>`;
   return rz.map(r => {
-    const vers = (r.historie && r.historie.length) ? `<span class="rz-vers">${r.historie.length + 1} Stände</span>` : "";
     return `<div class="eintrag rz-eintrag" data-em="${r.id}">
-      <div><b>${esc(r.kuerzel)}</b> · ${esc(r.aufbau)} ${vers}</div>
+      <div><b>${esc(r.kuerzel)}</b> · ${esc(r.aufbau)} ${versandBadge(r)}</div>
       <div class="meta">${esc(r.klartext || "")}${r.maschine ? " · " + esc(r.maschine) : ""}${r.beispiel_auftrag ? " · Auftrag " + esc(r.beispiel_auftrag) : ""} · ${esc(formularName(r.formular))}</div>
     </div>`;
   }).join("");
@@ -701,15 +711,36 @@ function renderErstmusterDetail() {
   const werte = felder.length
     ? felder.map(f => `<div class="zeile"><span>${esc(f.name)}</span><span><span class="w">${esc(soll[f.name])}</span>${f.einheit ? `<span class="einheit">${esc(f.einheit)}</span>` : ""}</span></div>`).join("")
     : `<div class="leer">Noch keine Werte eingetragen.</div>`;
+  const anlage = anlageDaten(r);
+  const nl = anlage.notloesungen;
+  const nlHtml = nl.length ? nl.map(n => `
+    <div class="eintrag">
+      <div><b>${esc(n.feld)}</b>${n.einheit ? ` <span class="einheit">${esc(n.einheit)}</span>` : ""}</div>
+      <div style="font-size:.92rem">Soll <span class="alt-wert">${esc(n.soll)}</span> · gefahren <b>${esc(n.ist)}</b></div>
+      ${n.grund ? `<div style="font-size:.9rem">${esc(n.grund)}</div>` : `<div class="meta">kein Grund angegeben</div>`}
+      <div class="meta">${esc(n.datum)}${n.benutzer ? " · " + esc(n.benutzer) : ""}</div>
+      <button class="btn btn-klein btn-grau" data-nl-erledigt="${n.id}" style="margin-top:6px">Erledigt – nicht mehr melden</button>
+    </div>`).join("") : `<div class="leer">Keine offenen Notlösungen.</div>`;
+
   inhalt.innerHTML = `
     <button class="btn btn-grau btn-klein" data-em-zurueck="1">‹ Zurück</button>
     <div class="karte" style="margin-top:12px">
       <div class="meta">${esc(r.klartext || "")}${r.maschine ? " · " + esc(r.maschine) : ""}${r.beispiel_auftrag ? " · Auftrag " + esc(r.beispiel_auftrag) : ""}</div>
       <div style="margin-top:6px"><b>Formular:</b> ${esc(formularName(r.formular))}</div>
+      <div style="margin-top:6px">${versandBadge(r)}</div>
       <div class="meta">angelegt ${esc(r.created_at || "")}${r.geaendert_am && r.geaendert_am !== r.created_at ? " · geändert " + esc(r.geaendert_am) : ""}${r.benutzer ? " · " + esc(r.benutzer) : ""}</div>
     </div>
+    ${(anlage.aenderungen.length || nl.length) ? `<div class="karte">
+      <h2>Kommt beim Versand auf Seite 2</h2>
+      <p class="hinweis" style="margin-top:0">${anlage.aenderungen.length} geänderte ${anlage.aenderungen.length === 1 ? "Wert" : "Werte"}${anlage.versand ? " seit Stand " + anlage.versand.stand : ""} · ${nl.length} ${nl.length === 1 ? "Notlösung" : "Notlösungen"}</p>
+      ${anlage.aenderungen.map(a => `<div class="v-zeile"><span>${esc(a.name)}</span><span><span class="alt-wert">${esc(a.alt || "–")}</span> → <b>${esc(a.neu || "–")}</b>${a.diff ? ` <span class="meta">${esc(a.diff)}</span>` : ""}</span></div>`).join("")}
+    </div>` : ""}
     <div class="karte"><h2>Eingetragene Werte</h2>${werte}
       ${angaben.length ? `<p class="hinweis">Angaben wie Maschinentyp und KSS-Produkt stehen im PDF (${angaben.length} Stück).</p>` : ""}
+    </div>
+    <div class="karte"><h2>Notlösungen</h2>
+      <p class="hinweis" style="margin-top:0">Beim Rüsten anders gefahren, Sollwert blieb. Stehen auf Seite 2, bis das Erstmuster einmal versendet wurde.</p>
+      ${nlHtml}
     </div>
     <div class="karte" style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-klein" data-rezept-bearbeiten="${r.id}">Bearbeiten</button>
@@ -927,6 +958,102 @@ function vergleicheRuestungen(formular, alt, neu) {
   }).filter(Boolean);
 }
 
+// Unterschiede zweier Soll-Stände desselben Musters (für die PDF-Anlage)
+function diffSollWerte(altSoll, neuSoll, formular) {
+  const felder = formularFelder(formular);
+  const namen = felder.map(f => f.name);
+  Object.keys(neuSoll || {}).concat(Object.keys(altSoll || {}))
+    .forEach(n => { if (namen.indexOf(n) === -1) namen.push(n); });
+  return namen.map(n => {
+    const a = (altSoll || {})[n] || "", b = (neuSoll || {})[n] || "";
+    if (a === b) return null;
+    const f = felder.find(x => x.name === n) || {};
+    let diff = "";
+    if (a && b && istZahl(a) && istZahl(b)) {
+      const d = zahl(b) - zahl(a);
+      diff = (d > 0 ? "+" : "-") + fmt(Math.abs(d), nachkomma(a, b));
+    }
+    return { name: n, alt: a, neu: b, diff: diff, einheit: f.einheit || "" };
+  }).filter(Boolean);
+}
+
+/* Anlage fürs PDF: Änderungen seit dem zuletzt versendeten Stand + offene Notlösungen */
+function anlageDaten(r) {
+  const stand = standVon(r), v = r.versand || null;
+  let aenderungen = [];
+  if (v && v.stand < stand) {
+    const alt = (r.historie || [])[v.stand - 1];   // historie[n-1] ist der Soll-Stand n
+    if (alt) aenderungen = diffSollWerte(alt.soll, r.soll, r.formular);
+  }
+  const offen = notloesungen().filter(n => n.rezept_id === r.id && !n.erledigt && !n.versendet_am);
+  return { stand: stand, versand: v, aenderungen: aenderungen, notloesungen: offen };
+}
+
+/* ---------- Nach dem Rüsten: Abweichung übernehmen oder als Notlösung festhalten ---------- */
+function renderAbweichung() {
+  const a = state.abweichung;
+  const r = rezepte().find(x => x.id === a.rezept_id);
+  if (!r) { state.abweichung = null; return render(); }
+  titel.textContent = a.phase === "grund" ? "Notlösung festhalten" : "Abweichungen";
+  const anz = a.felder.length;
+  const zeilen = a.felder.map((f, i) => `
+    <div class="abw-zeile">
+      <div class="abw-kopf">
+        <span class="abw-name">${esc(f.name)}${f.einheit ? ` <span class="einheit">${esc(f.einheit)}</span>` : ""}</span>
+        <span class="abw-werte"><span class="alt-wert">${esc(f.soll)}</span> → <b>${esc(f.ist)}</b></span>
+      </div>
+      ${a.phase === "grund" ? `<input type="text" class="abw-grund" data-grund="${i}" value="${esc(f.grund || "")}" placeholder="Warum? (steht später im Erstmuster)">` : ""}
+    </div>`).join("");
+
+  inhalt.innerHTML = a.phase === "grund"
+    ? `<div class="karte">
+        <h2>Notlösung festhalten</h2>
+        <p class="hinweis" style="margin-top:0">Der Sollwert im Erstmuster bleibt, wie er ist. Die Abweichung steht künftig auf Seite 2 des Erstmusters.</p>
+        ${zeilen}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+          <button class="btn btn-klein" data-abw-speichern="1">Speichern</button>
+          <button class="btn btn-klein btn-grau" data-abw-ohne-grund="1">Ohne Grund speichern</button>
+        </div>
+      </div>`
+    : `<div class="karte">
+        <h2>${anz} ${anz === 1 ? "Wert war" : "Werte waren"} anders als im Erstmuster</h2>
+        <p class="hinweis" style="margin-top:0">${esc(r.kuerzel + " " + r.aufbau)} · Stand ${standVon(r)} – sollen die gerüsteten Werte der neue Stand werden?</p>
+        ${zeilen}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+          <button class="btn btn-klein btn-gruen" data-abw-uebernehmen="1">Ja, als neuen Stand übernehmen</button>
+          <button class="btn btn-klein btn-grau" data-abw-notloesung="1">Nein, war nur diesmal so</button>
+        </div>
+      </div>`;
+}
+
+function uebernehmeAbweichungen() {
+  const a = state.abweichung, list = rezepte(), r = list.find(x => x.id === a.rezept_id);
+  if (!r) { state.abweichung = null; return render(); }
+  const alt = { soll: Object.assign({}, r.soll), kuerzel: r.kuerzel, aufbau: r.aufbau, klartext: r.klartext,
+                maschine: r.maschine, beispiel_auftrag: r.beispiel_auftrag, formular: r.formular };
+  if (!r.historie) r.historie = [];
+  r.historie.push(Object.assign({}, alt, { stand_vom: r.geaendert_am || r.created_at, geaendert_von: r.geaendert_von || r.benutzer || "" }));
+  if (!r.soll) r.soll = {};
+  a.felder.forEach(f => { r.soll[f.name] = f.ist; });
+  r.geaendert_am = jetzt(); r.geaendert_von = wer();
+  DB.set("rezepte", list);
+  state.abweichung = null;
+  flash("Neuer Stand " + standVon(r) + " gespeichert."); render(); window.scrollTo(0, 0);
+}
+
+function speichereNotloesungen(mitGrund) {
+  const a = state.abweichung, list = notloesungen();
+  a.felder.forEach(f => {
+    list.push({ id: neueId(), rezept_id: a.rezept_id, feld: f.name, soll: f.soll, ist: f.ist,
+                einheit: f.einheit || "", grund: mitGrund ? String(f.grund || "").trim() : "",
+                datum: jetzt(), benutzer: wer(), erledigt: false, versendet_am: null });
+  });
+  DB.set("notloesungen", list);
+  state.abweichung = null;
+  flash(a.felder.length === 1 ? "Notlösung festgehalten." : a.felder.length + " Notlösungen festgehalten.");
+  render(); window.scrollTo(0, 0);
+}
+
 function renderRuestVergleich() {
   const rv = state.rvergleich;
   const r = rezepte().find(x => x.id === rv.rezept_id);
@@ -1093,10 +1220,14 @@ function ruestAbschluss(id) {
   const wahl = document.getElementById("ruest-maschine");
   const maschine = wahl ? wahl.value : (r.maschine || "");
   const soll = r.soll || {}, status = r.ruest_status || {};
-  const ist = {};
+  const ist = {}, abweichungen = [];
   formularFelder(r.formular).filter(f => !f.angabe && soll[f.name] != null && soll[f.name] !== "").forEach(f => {
     const st = status[f.name] || {};
     ist[f.name] = { soll: soll[f.name], wert: st.ist || "", erledigt: !!st.erledigt };
+    const gefahren = String(st.ist || "").trim();
+    if (gefahren && gefahren !== String(soll[f.name]).trim()) {
+      abweichungen.push({ name: f.name, soll: String(soll[f.name]), ist: gefahren, einheit: f.einheit || "", grund: "" });
+    }
   });
   const zeit = jetzt();
   const rl = ruestungen();
@@ -1113,6 +1244,8 @@ function ruestAbschluss(id) {
     DB.set("laufend", lauf);
   }
   flash(maschine ? "Gerüstet – läuft jetzt auf " + maschine + "." : "Rüstung im Verlauf gespeichert.");
+  // Wich ein Wert vom Erstmuster ab? Dann gleich klären, ob das der neue Stand ist
+  if (abweichungen.length) state.abweichung = { rezept_id: id, felder: abweichungen, phase: "frage" };
   render(); window.scrollTo(0, 0);
 }
 
@@ -1122,19 +1255,24 @@ async function sendeErstmuster(id) {
   if (!r) return;
   let blob;
   const heute = jetzt().split(" ")[0];   // nur das Datum, ohne Uhrzeit
-  try { blob = erstmusterPdf(r, wer(), heute); }
+  const anlage = anlageDaten(r);
+  try { blob = erstmusterPdf(r, wer(), heute, anlage); }
   catch (e) { logFehler("PDF", e.message, e.stack); return flash("PDF konnte nicht erstellt werden."); }
 
   const name = "Erstmuster_" + (r.kuerzel || "Muster").replace(/[^\wäöüÄÖÜß-]/g, "") +
-    (r.aufbau ? "_" + r.aufbau.replace(/[^\w,-]/g, "") : "") + ".pdf";
+    (r.aufbau ? "_" + r.aufbau.replace(/[^\w,-]/g, "") : "") +
+    "_Stand" + anlage.stand + "_" + heute.split(".").reverse().join("-") + ".pdf";
   const datei = new File([blob], name, { type: "application/pdf" });
   const text = "Erstmuster " + [r.kuerzel, r.aufbau, r.klartext].filter(Boolean).join(" ")
     + (r.maschine ? " · " + r.maschine : "")
     + (r.beispiel_auftrag ? " · Auftrag " + r.beispiel_auftrag : "")
-    + "\nFormular: " + formularName(r.formular) + "\nErstellt: " + jetzt() + " von " + (wer() || "-");
+    + "\nFormular: " + formularName(r.formular) + " · Stand " + anlage.stand
+    + (anlage.aenderungen.length || anlage.notloesungen.length
+        ? "\nSeite 2: " + anlage.aenderungen.length + " geänderte Werte, " + anlage.notloesungen.length + " Notlösungen" : "")
+    + "\nErstellt: " + jetzt() + " von " + (wer() || "-");
 
   if (navigator.canShare && navigator.canShare({ files: [datei] })) {
-    try { await navigator.share({ files: [datei], title: name, text: text }); return; }
+    try { await navigator.share({ files: [datei], title: name, text: text }); merkeVersand(r.id, anlage); return; }
     catch (e) { if (e && e.name === "AbortError") return; }   // Nutzer hat abgebrochen
   }
   // Kein Teilen möglich -> Datei ablegen, damit sie von Hand angehängt werden kann
@@ -1142,7 +1280,25 @@ async function sendeErstmuster(id) {
   a.href = URL.createObjectURL(blob); a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  merkeVersand(r.id, anlage);
   flash("PDF gespeichert – von dort an die Mail anhängen.");
+}
+
+/* Festhalten, welcher Stand rausging – damit die Liste zeigt, wo ein altes Blatt liegt.
+   Gemeldete Notlösungen sind erledigt; kommen sie wieder vor, werden sie neu erfasst. */
+function merkeVersand(id, anlage) {
+  const list = rezepte(), r = list.find(x => x.id === id);
+  if (!r) return;
+  const zeit = jetzt();
+  r.versand = { stand: anlage.stand, datum: zeit, benutzer: wer() };
+  DB.set("rezepte", list);
+  if (anlage.notloesungen.length) {
+    const ids = anlage.notloesungen.map(n => n.id);
+    const nl = notloesungen();
+    nl.forEach(n => { if (ids.indexOf(n.id) !== -1) n.versendet_am = zeit; });
+    DB.set("notloesungen", nl);
+  }
+  render();
 }
 
 /* ---------- Ansicht: Mehr / Sicherung ---------- */
@@ -1245,7 +1401,8 @@ async function codeEntfernen() {
 
 function exportData() {
   const daten = { version: 1, exportiert: jetzt(), entries: entries(), todos: todos(), spulen: spulen(),
-                  rezepte: rezepte(), ruestungen: ruestungen(), maschinen: maschinen(), laufend: laufend() };
+                  rezepte: rezepte(), ruestungen: ruestungen(), maschinen: maschinen(), laufend: laufend(),
+                  notloesungen: notloesungen() };
   const text = JSON.stringify(daten, null, 2);
   const name = "schichtuebergabe-sicherung.json";
   const blob = new Blob([text], { type: "application/json" });
@@ -1271,6 +1428,7 @@ function importData() {
       if (Array.isArray(d.rezepte)) DB.set("rezepte", d.rezepte);
       if (Array.isArray(d.ruestungen)) DB.set("ruestungen", d.ruestungen);
       if (Array.isArray(d.maschinen)) DB.set("maschinen", d.maschinen);
+      if (Array.isArray(d.notloesungen)) DB.set("notloesungen", d.notloesungen);
       if (d.laufend && typeof d.laufend === "object") DB.set("laufend", d.laufend);
       flash("Sicherung eingelesen."); render();
     } catch (e) { flash("Datei nicht lesbar."); }
@@ -1464,7 +1622,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -1571,6 +1729,16 @@ document.addEventListener("click", e => {
     const lauf = laufend(); if (lauf[n]) { delete lauf[n]; DB.set("laufend", lauf); }
     flash("Maschine entfernt."); render();
   }
+  else if (el.dataset.abwUebernehmen) uebernehmeAbweichungen();
+  else if (el.dataset.abwNotloesung) { state.abweichung.phase = "grund"; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.abwSpeichern) speichereNotloesungen(true);
+  else if (el.dataset.abwOhneGrund) speichereNotloesungen(false);
+  else if (el.dataset.nlErledigt) {
+    const nl = notloesungen();
+    const n = nl.find(x => x.id === el.dataset.nlErledigt);
+    if (n) { n.erledigt = true; DB.set("notloesungen", nl); }
+    flash("Notlösung als erledigt vermerkt."); render();
+  }
   else if (el.dataset.rvergleich) { state.rvergleich = { rezept_id: el.dataset.rvergleich, a: null, b: null, alle: false }; render(); window.scrollTo(0, 0); }
   else if (el.dataset.rvZurueck) { state.rvergleich = null; render(); window.scrollTo(0, 0); }
   else if (el.dataset.rvAlle) { state.rvergleich.alle = !state.rvergleich.alle; render(); }
@@ -1620,6 +1788,11 @@ document.addEventListener("input", e => {
   if (e.target.id === "spulen-suche") { spulenSuche = e.target.value; const l = document.getElementById("spulen-liste"); if (l) l.innerHTML = spulenListeHtml(); return; }
   if (e.target.id === "ruest-suche") { ruestSuche = e.target.value; const l = document.getElementById("ruest-liste"); if (l) l.innerHTML = ruestListeHtml(); return; }
   if (e.target.id === "em-suche") { emSuche = e.target.value; const l = document.getElementById("em-liste"); if (l) l.innerHTML = emListeHtml(); return; }
+  if (e.target.dataset && e.target.dataset.grund !== undefined && state.abweichung) {
+    const f = state.abweichung.felder[parseInt(e.target.dataset.grund, 10)];
+    if (f) f.grund = e.target.value;
+    return;
+  }
   if (e.target.dataset && e.target.dataset.stamm && wiz) { wiz.stamm[e.target.dataset.stamm] = e.target.value; return; }
   if (e.target.classList && e.target.classList.contains("wiz-eigen") && wiz) { wiz.werte[e.target.dataset.feld] = e.target.value; return; }
   if (e.target.dataset && e.target.dataset.ist) { setzeIst(e.target.dataset.ist, e.target.value); return; }
@@ -1654,6 +1827,13 @@ function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("sp
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "4.3": [
+    "Nach dem Rüsten fragt die App bei Abweichungen: neuer Stand oder Notlösung",
+    "Notlösungen werden mit Grund festgehalten",
+    "Jedes Erstmuster hat eine Stand-Nummer; die Liste zeigt, welcher Stand versendet wurde",
+    "Das PDF bekommt Seite 2 mit Änderungen und Notlösungen",
+    "Dateiname enthält Stand und Datum",
+  ],
   "4.2": [
     "Derzeit laufend zeigt nur noch Draht, Geschwindigkeit, Glühfaktor und Zugkraft Aufwickler",
     "Neu: Rüstungen desselben Musters vergleichen",

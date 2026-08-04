@@ -147,6 +147,24 @@ module.exports = async function () {
   check("Maschinen-Auswahl steht auf Z49", d.getElementById("ruest-maschine").value === "Z49");
   d.querySelector("[data-ruest-abschluss]").click();
   check("Rüstung im Verlauf", S("ruestungen").length === 1 && S("ruestungen")[0].benutzer === "güntzel");
+
+  // --- Abweichung: Ist 17,5 statt Soll 18 -> Notlösung mit Grund ---
+  check("Abweichung wird abgefragt", d.querySelectorAll(".abw-zeile").length === 1);
+  check("nur der abweichende Wert steht drin",
+    d.querySelector(".abw-zeile").textContent.indexOf("Ziehgeschwindigkeit") !== -1);
+  check("gleicher Wert wird nicht gemeldet",
+    d.getElementById("inhalt").textContent.indexOf("Glühfaktor") === -1);
+  d.querySelector("[data-abw-notloesung]").click();
+  setVal(d.querySelector('[data-grund="0"]'), "Draht riss bei 18");
+  d.querySelector("[data-abw-speichern]").click();
+  check("Notlösung gespeichert", S("notloesungen").length === 1
+    && S("notloesungen")[0].ist === "17,5" && S("notloesungen")[0].soll === "18");
+  check("Grund gespeichert", S("notloesungen")[0].grund === "Draht riss bei 18");
+  check("Sollwert bleibt unverändert", S("rezepte")[0].soll["Ziehgeschwindigkeit"] === "18");
+  check("Notlösung erzeugt keinen neuen Stand", (S("rezepte")[0].historie || []).length === 0);
+
+  tab("ruesten");
+  d.querySelector("[data-rezept]").click();
   check("Rüst-Checkliste ohne Bearbeiten", d.querySelector("[data-rezept-bearbeiten]") === null);
   check("Rüst-Checkliste ohne PDF-Versand", d.querySelector("[data-erstmuster]") === null);
 
@@ -200,6 +218,9 @@ module.exports = async function () {
   setVal(d.querySelectorAll(".p-ist")[1], "1,20");   // Glühfaktor gleich wie beim ersten Mal
   d.querySelector("[data-ruest-abschluss]").click();
   check("zweite Rüstung gespeichert", S("ruestungen").length === 2);
+  d.querySelector("[data-abw-notloesung]").click();
+  d.querySelector("[data-abw-ohne-grund]").click();
+  check("Notlösung ohne Grund geht auch", S("notloesungen").length === 2 && S("notloesungen")[1].grund === "");
 
   tab("maschinen");
   d.querySelector('[data-maschine="Z49"]').click();
@@ -240,6 +261,48 @@ module.exports = async function () {
   d.querySelector("[data-vergleich]").click();
   check("Vergleich zeigt alt -> neu", d.getElementById("inhalt").innerHTML.indexOf("18") !== -1
     && d.getElementById("inhalt").innerHTML.indexOf("20") !== -1);
+
+  // --- Stand, Versand und Übernahme einer Abweichung ---
+  tab("erstmuster");
+  check("Liste zeigt: noch nie versendet",
+    d.getElementById("em-liste").innerHTML.indexOf("noch nie versendet") !== -1);
+  d.querySelector("[data-em]").click();
+  check("Detail kündigt Seite 2 an",
+    d.getElementById("inhalt").textContent.indexOf("Kommt beim Versand auf Seite 2") !== -1);
+  check("beide Notlösungen offen", d.querySelectorAll("[data-nl-erledigt]").length === 2);
+  d.querySelector("[data-nl-erledigt]").click();
+  check("erledigte Notlösung verschwindet", d.querySelectorAll("[data-nl-erledigt]").length === 1);
+
+  // Versand: ohne navigator.share landet das PDF als Download – dafür fehlt jsdom nur die URL
+  w.URL.createObjectURL = () => "blob:test";
+  w.URL.revokeObjectURL = () => {};
+  d.querySelector("[data-erstmuster]").click();
+  check("Versand merkt sich den Stand", S("rezepte")[0].versand.stand === 2);
+  check("gemeldete Notlösung ist versendet",
+    S("notloesungen").filter(n => n.versendet_am).length === 1);
+  tab("erstmuster");
+  check("Liste zeigt den versendeten Stand",
+    d.getElementById("em-liste").innerHTML.indexOf("Stand 2 versendet") !== -1);
+  d.querySelector("[data-em]").click();
+  check("nach dem Versand keine offene Notlösung mehr", d.querySelector("[data-nl-erledigt]") === null);
+
+  // dritte Rüstung: Abweichung diesmal übernehmen -> neuer Stand
+  tab("ruesten");
+  d.querySelector("[data-rezept]").click();
+  setVal(d.querySelectorAll(".p-ist")[0], "21");    // Soll steht auf 20
+  d.querySelector("[data-ruest-abschluss]").click();
+  check("Abweichung nach der dritten Rüstung", d.querySelectorAll(".abw-zeile").length === 1);
+  d.querySelector("[data-abw-uebernehmen]").click();
+  check("Sollwert übernommen", S("rezepte")[0].soll["Ziehgeschwindigkeit"] === "21");
+  check("Übernahme erzeugt einen Stand", (S("rezepte")[0].historie || []).length === 2);
+  check("keine neue Notlösung", S("notloesungen").length === 2);
+  tab("erstmuster");
+  check("Liste warnt vor dem alten Blatt",
+    d.getElementById("em-liste").innerHTML.indexOf("versendet war Stand 2") !== -1);
+  d.querySelector("[data-em]").click();
+  check("Seite 2 zeigt die Änderung seit dem Versand",
+    d.getElementById("inhalt").textContent.indexOf("Kommt beim Versand auf Seite 2") !== -1
+    && d.getElementById("inhalt").innerHTML.indexOf("21") !== -1);
 
   // --- Erstmuster-Formulare: Auswahl bestimmt die abgefragten Werte ---
   tab("erstmuster");

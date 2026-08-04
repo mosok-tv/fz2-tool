@@ -199,6 +199,19 @@ button { font-family: inherit; cursor: pointer; }
 .rv-diff.rauf { color: var(--green); }
 .rv-diff.runter { color: var(--red); }
 .rv-diff.neutral { color: var(--grau); font-weight: 400; }
+
+/* Versand-Status je Erstmuster */
+.em-badge { display: inline-block; font-size: .74rem; font-weight: 600; padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
+.em-badge.neu { background: #eceff1; color: #5b6b78; }
+.em-badge.alt { background: #fdf3dc; color: #8a6a05; }
+.em-badge.ok { background: #e4f4e7; color: #1f6b31; }
+
+/* Abweichung nach dem Rüsten */
+.abw-zeile { border: 1.5px solid var(--linie); border-radius: 10px; padding: 11px; margin-top: 8px; }
+.abw-kopf { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: baseline; }
+.abw-name { font-weight: 600; font-size: .95rem; }
+.abw-werte { font-size: .95rem; }
+.abw-grund { margin-top: 8px; }
 .rz-vers { display: inline-block; font-size: .72rem; color: var(--grau); background: #f0f3f6; border: 1px solid var(--linie); border-radius: 20px; padding: 1px 8px; margin-left: 4px; }
 .alt-wert { color: #b0392b; text-decoration: line-through; }
 

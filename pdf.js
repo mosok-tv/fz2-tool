@@ -297,7 +297,7 @@ function kopfZeichnen(doc, form, r, seite, seiten) {
   return o + ZH + 3;
 }
 
-function fussZeichnen(doc, o, ersteller, datum) {
+function fussZeichnen(doc, o, ersteller, datum, stand) {
   doc.rechteck(RAND, o, BREITE, 22);
   doc.text("Bemerkung:", SP_NR, o + 12, 8, true);
   o += 22;
@@ -312,12 +312,69 @@ function fussZeichnen(doc, o, ersteller, datum) {
   doc.text("Geprüft von:", RAND + 186, o + 11, 8);
   doc.text("Datum:", RAND + 186, o + 22, 8);
   doc.text("* vom Maschinenbediener einzustellen", RAND + 366, o + 11, 8);
+  // Stand: damit im Büro erkennbar ist, welches Blatt das neuere ist
+  if (stand) doc.text("Stand " + stand + (datum ? " vom " + datum : ""), RAND + 366, o + 22, 8, true);
   return o + 26;
 }
 
-function erstmusterPdf(rezept, ersteller, datum) {
+/* ---------- Anlage: was sich geändert hat und was notgedrungen anders lief ---------- */
+const AN_ALT = RAND + 300, AN_NEU = RAND + 372, AN_DIFF = RAND + 444;
+
+function anlageZeile(doc, o, spalten, fett, hoehe) {
+  const h = hoehe || ZH + 1;
+  doc.rechteck(RAND, o, BREITE, h);
+  doc.linie(AN_ALT - 8, o, AN_ALT - 8, o + h);
+  doc.linie(AN_NEU - 8, o, AN_NEU - 8, o + h);
+  if (spalten[3] !== undefined) doc.linie(AN_DIFF - 8, o, AN_DIFF - 8, o + h);
+  doc.textGekuerzt(spalten[0], SP_TEXT, o + 7.6, 7, AN_ALT - SP_TEXT - 14, fett);
+  doc.textGekuerzt(spalten[1], AN_ALT, o + 7.6, 7.2, 64, fett);
+  doc.textGekuerzt(spalten[2], AN_NEU, o + 7.6, 7.2, 64, fett);
+  if (spalten[3] !== undefined) doc.textGekuerzt(spalten[3], AN_DIFF, o + 7.6, 7.2, RAND + BREITE - AN_DIFF - 6, true);
+  return o + h;
+}
+
+function anlageZeichnen(doc, form, r, anlage, seite, seiten, ersteller, datum) {
+  let o = kopfZeichnen(doc, form, r, seite, seiten);
+  o += 8;
+  doc.text("ANLAGE ZUM ERSTMUSTER - ÄNDERUNGEN UND ABWEICHUNGEN", SP_NR, o + 8, 9.5, true);
+  o += 14;
+  const v = anlage.versand;
+  doc.text("Stand " + anlage.stand + (datum ? " vom " + datum : "")
+    + (v ? " - zuletzt versendet Stand " + v.stand + " am " + String(v.datum).split(" ")[0] : " - erstmalig versendet"),
+    SP_NR, o + 8, 7.6);
+  o += 18;
+
+  const aend = anlage.aenderungen || [], notl = anlage.notloesungen || [];
+  if (aend.length) {
+    doc.text("A  Geänderte Sollwerte" + (v ? " gegenüber Stand " + v.stand : ""), SP_NR, o + 8, 8, true);
+    o += 12;
+    o = anlageZeile(doc, o, ["Wert", "alt", "neu", "Differenz"], true);
+    aend.forEach(a => {
+      o = anlageZeile(doc, o, [a.name + (a.einheit ? " (" + a.einheit + ")" : ""), a.alt || "-", a.neu || "-", a.diff || "geändert"]);
+    });
+    o += 14;
+  }
+  if (notl.length) {
+    doc.text("B  Notlösungen beim Rüsten - Sollwert blieb unverändert", SP_NR, o + 8, 8, true);
+    o += 12;
+    o = anlageZeile(doc, o, ["Wert", "Soll", "gefahren"], true);
+    notl.forEach(n => {
+      const zusatz = [String(n.datum).split(" ")[0], n.benutzer, n.grund].filter(Boolean).join(" - ");
+      const h = zusatz ? ZH + 11 : ZH + 1;
+      const start = o;
+      o = anlageZeile(doc, o, [n.feld + (n.einheit ? " (" + n.einheit + ")" : ""), n.soll || "-", n.ist || "-"], false, h);
+      if (zusatz) doc.textGekuerzt(zusatz, SP_TEXT + 6, start + 17.5, 6.4, AN_ALT - SP_TEXT - 20);
+    });
+    o += 14;
+  }
+  doc.text("Erstellt " + (datum || "") + (ersteller ? " von " + ersteller : "")
+    + " - " + aend.length + " geänderte Werte, " + notl.length + " Notlösungen", SP_NR, o + 8, 7.2);
+}
+
+function erstmusterPdf(rezept, ersteller, datum, anlage) {
   const form = PDF_FORMULARE[rezept.formular] || PDF_FORMULARE["1350"];
   const soll = rezept.soll || {};
+  const hatAnlage = !!(anlage && (((anlage.aenderungen || []).length) || ((anlage.notloesungen || []).length)));
 
   // Zeilen einsammeln (Abschnittsköpfe zählen mit)
   const alle = [];
@@ -331,11 +388,12 @@ function erstmusterPdf(rezept, ersteller, datum) {
   const platz = PdfDoc.SEITE_H - RAND - kopfH - fussH - RAND;
   const proSeite = Math.floor(platz / ZH);
   const seiten = Math.max(1, Math.ceil(alle.length / proSeite));
+  const gesamt = seiten + (hatAnlage ? 1 : 0);
 
   const doc = new PdfDoc();
   for (let s = 0; s < seiten; s++) {
     if (s > 0) doc.neueSeite();
-    let o = kopfZeichnen(doc, form, rezept, s + 1, seiten);
+    let o = kopfZeichnen(doc, form, rezept, s + 1, gesamt);
     const teil = alle.slice(s * proSeite, (s + 1) * proSeite);
     teil.forEach(z => {
       if (z.kopf) {
@@ -360,9 +418,13 @@ function erstmusterPdf(rezept, ersteller, datum) {
       }
       o += ZH;
     });
-    if (s === seiten - 1) fussZeichnen(doc, o, ersteller, datum);
+    if (s === seiten - 1) fussZeichnen(doc, o, ersteller, datum, anlage && anlage.stand);
+  }
+  if (hatAnlage) {
+    doc.neueSeite();
+    anlageZeichnen(doc, form, rezept, anlage, gesamt, gesamt, ersteller, datum);
   }
   return doc.bauen();
 }
 
-if (typeof module !== "undefined") module.exports = { erstmusterPdf, PDF_FORMULARE, PdfDoc };
+if (typeof module !== "undefined") module.exports = { erstmusterPdf, PDF_FORMULARE, PdfDoc, anlageZeichnen };
