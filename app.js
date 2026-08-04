@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "3.2";
+const APP_VERSION = "4.0";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -243,9 +243,10 @@ window.addEventListener("error", e => logFehler("Programmfehler", e.message, (e.
 window.addEventListener("unhandledrejection", e => logFehler("Programmfehler", (e.reason && e.reason.message) || e.reason, e.reason && e.reason.stack));
 
 /* ---------- Router ---------- */
-const state = { view: "maschinen", maschine: null, overlay: null, rezept: null, rezeptForm: null, verlauf: null, vergleich: null };
+const state = { view: "maschinen", maschine: null, overlay: null, rezept: null, rezeptForm: null, verlauf: null, vergleich: null, emDetail: null };
 let spModus = "summe";  // Berechnungsart der Vorzüge: "summe" | "kleinster"
 let ruestSuche = "";    // Suchbegriff im Rüsten-Bereich
+let emSuche = "";       // Suchbegriff im Erstmuster-Bereich
 let spulenSuche = "";   // Suchbegriff für gespeicherte Berechnungen
 let spAbzug = 0;        // Galvanik-Abzug je Vorzug in kg (0 / 5 / 7)
 let spEditId = null;    // gesetzt, wenn eine gespeicherte Berechnung bearbeitet wird
@@ -253,7 +254,8 @@ const inhalt = document.getElementById("inhalt");
 const titel = document.getElementById("kopf-titel");
 
 function zeige(view) {
-  state.view = view; state.overlay = null; state.maschine = null; state.rezept = null; state.rezeptForm = null; state.verlauf = null; state.vergleich = null;
+  state.view = view; state.overlay = null; state.maschine = null; state.rezept = null;
+  state.rezeptForm = null; state.verlauf = null; state.vergleich = null; state.emDetail = null;
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("aktiv", t.dataset.view === view));
   render();
   window.scrollTo(0, 0);
@@ -262,11 +264,15 @@ function render() {
   if (state.overlay === "fehler") return renderFehler();
   if (state.view === "maschinen" && state.maschine) return renderMaschineDetail();
   if (state.view === "ruesten") {
-    if (state.rezeptForm) return renderRezeptForm();
-    if (state.vergleich) return renderRezeptVergleich();
     if (state.verlauf) return renderVerlauf();
     if (state.rezept) return renderRuestCheck();
     return renderRuesten();
+  }
+  if (state.view === "erstmuster") {
+    if (state.rezeptForm) return renderRezeptForm();
+    if (state.vergleich) return renderRezeptVergleich();
+    if (state.emDetail) return renderErstmusterDetail();
+    return renderErstmuster();
   }
   ({ maschinen: renderMaschinen, aufgaben: renderAufgaben, spulen: renderSpulen, mehr: renderMehr }[state.view] || renderMaschinen)();
 }
@@ -277,7 +283,7 @@ function letzterEintrag(m) {
   return alle.length ? alle[alle.length - 1] : null;
 }
 function renderMaschinen() {
-  titel.textContent = "Maschinen";
+  titel.textContent = "Schichtübergabe";
   let kacheln = MASCHINEN.map(m => {
     const e = letzterEintrag(m), farbe = e ? STATUS[e.status].farbe : "none";
     const txt = e ? STATUS[e.status].label : "kein Eintrag";
@@ -599,9 +605,61 @@ function renderRuesten() {
   inhalt.innerHTML = `
     <div class="karte">
       <input type="text" id="ruest-suche" placeholder="Suchen: Kürzel, Aufbau, Maschine, Auftrag …" value="${esc(ruestSuche)}">
-      <button class="btn" data-rezept-neu="1" style="margin-top:10px">+ Neues Draht-Rezept</button>
     </div>
-    <div class="karte"><h2>Muster</h2><div id="ruest-liste">${ruestListeHtml()}</div></div>`;
+    <div class="karte"><h2>Welchen Draht legst du auf?</h2>
+      <p class="hinweis" style="margin-top:0">Muster antippen – dann Werte der Reihe nach einstellen und abhaken.</p>
+      <div id="ruest-liste">${ruestListeHtml()}</div></div>`;
+}
+
+/* ---------- Erstmuster: anlegen, bearbeiten, versenden ---------- */
+function emListeHtml() {
+  const q = emSuche.trim().toLowerCase();
+  const rz = rezepte().slice().reverse().filter(r => !q ||
+    [r.kuerzel, r.aufbau, r.klartext, r.maschine, r.beispiel_auftrag].join(" ").toLowerCase().indexOf(q) !== -1);
+  if (!rz.length) return `<div class="leer">${emSuche ? "Kein Erstmuster gefunden." : "Noch kein Erstmuster angelegt."}</div>`;
+  return rz.map(r => {
+    const vers = (r.historie && r.historie.length) ? `<span class="rz-vers">${r.historie.length + 1} Stände</span>` : "";
+    return `<div class="eintrag rz-eintrag" data-em="${r.id}">
+      <div><b>${esc(r.kuerzel)}</b> · ${esc(r.aufbau)} ${vers}</div>
+      <div class="meta">${esc(r.klartext || "")}${r.maschine ? " · " + esc(r.maschine) : ""}${r.beispiel_auftrag ? " · Auftrag " + esc(r.beispiel_auftrag) : ""} · ${esc(formularName(r.formular))}</div>
+    </div>`;
+  }).join("");
+}
+function renderErstmuster() {
+  titel.textContent = "Erstmuster";
+  inhalt.innerHTML = `
+    <div class="karte">
+      <input type="text" id="em-suche" placeholder="Suchen: Kürzel, Aufbau, Maschine, Auftrag …" value="${esc(emSuche)}">
+      <button class="btn" data-rezept-neu="1" style="margin-top:10px">+ Neues Erstmuster</button>
+    </div>
+    <div class="karte"><h2>Erstmuster</h2><div id="em-liste">${emListeHtml()}</div></div>`;
+}
+function renderErstmusterDetail() {
+  const r = rezepte().find(x => x.id === state.emDetail);
+  if (!r) { state.emDetail = null; return render(); }
+  titel.textContent = r.kuerzel + " " + r.aufbau;
+  const soll = r.soll || {};
+  const felder = formularFelder(r.formular).filter(f => !f.angabe && soll[f.name]);
+  const angaben = formularFelder(r.formular).filter(f => f.angabe && soll[f.name]);
+  const werte = felder.length
+    ? felder.map(f => `<div class="zeile"><span>${esc(f.name)}</span><span><span class="w">${esc(soll[f.name])}</span>${f.einheit ? `<span class="einheit">${esc(f.einheit)}</span>` : ""}</span></div>`).join("")
+    : `<div class="leer">Noch keine Werte eingetragen.</div>`;
+  inhalt.innerHTML = `
+    <button class="btn btn-grau btn-klein" data-em-zurueck="1">‹ Zurück</button>
+    <div class="karte" style="margin-top:12px">
+      <div class="meta">${esc(r.klartext || "")}${r.maschine ? " · " + esc(r.maschine) : ""}${r.beispiel_auftrag ? " · Auftrag " + esc(r.beispiel_auftrag) : ""}</div>
+      <div style="margin-top:6px"><b>Formular:</b> ${esc(formularName(r.formular))}</div>
+      <div class="meta">angelegt ${esc(r.created_at || "")}${r.geaendert_am && r.geaendert_am !== r.created_at ? " · geändert " + esc(r.geaendert_am) : ""}${r.benutzer ? " · " + esc(r.benutzer) : ""}</div>
+    </div>
+    <div class="karte"><h2>Eingetragene Werte</h2>${werte}
+      ${angaben.length ? `<p class="hinweis">Angaben wie Maschinentyp und KSS-Produkt stehen im PDF (${angaben.length} Stück).</p>` : ""}
+    </div>
+    <div class="karte" style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-klein" data-rezept-bearbeiten="${r.id}">Bearbeiten</button>
+      <button class="btn btn-klein btn-grau" data-vergleich="${r.id}">Änderungen</button>
+      <button class="btn btn-klein" data-erstmuster="${r.id}">Erstmuster senden</button>
+      <button class="btn btn-klein btn-rot" data-em-loeschen="${r.id}">Löschen</button>
+    </div>`;
 }
 
 /* Assistent zum Anlegen/Ändern eines Musters – Schritt für Schritt, Werte antippen statt tippen */
@@ -750,12 +808,10 @@ function renderRuestCheck() {
     <div class="karte"><h2>Einzustellende Werte</h2>
       ${punkte || '<div class="leer">Keine Werte hinterlegt. Rezept bearbeiten und Sollwerte eintragen.</div>'}</div>
     <div class="karte" style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-klein" data-rezept-bearbeiten="${r.id}">Rezept bearbeiten</button>
-      <button class="btn btn-klein btn-grau" data-vergleich="${r.id}">Änderungen</button>
       <button class="btn btn-klein btn-grau" data-verlauf="${r.id}">Rüst-Verlauf</button>
-      <button class="btn btn-klein" data-erstmuster="${r.id}">Erstmuster senden</button>
       ${g > 0 ? `<button class="btn btn-klein" data-ruest-abschluss="${r.id}">Rüstung abschließen</button>` : ""}
-    </div>`;
+    </div>
+    <p class="hinweis">Werte ändern oder das Blatt versenden: im Bereich Erstmuster.</p>`;
 }
 
 function renderVerlauf() {
@@ -987,7 +1043,7 @@ function renderMehr() {
     </div>
     <div class="karte">
       <h2>Info</h2>
-      <p class="hinweis" style="margin-top:0">Schichtübergabe Feinzug 2 – läuft offline auf dem Gerät, alle Daten bleiben lokal.
+      <p class="hinweis" style="margin-top:0"><b>Drahtzug</b> – Feinzug 2. Läuft offline auf dem Gerät, alle Daten bleiben lokal.
       Maschinen und Ampel-Status sind fest vorgegeben (Z49–Z83; grün=Produktion, gelb=Umbau, rot=Drahtriss, blau=Reparatur, violett=Abrüsten).</p>
     </div>`;
 }
@@ -1235,7 +1291,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -1257,7 +1313,7 @@ document.addEventListener("click", e => {
   else if (el.dataset.saveSpule) speichereSpule();
   else if (el.dataset.editSpule) editSpule(el.dataset.editSpule);
   else if (el.dataset.delSpule) delSpule(el.dataset.delSpule);
-  else if (el.dataset.rezeptNeu) { state.rezeptForm = "neu"; wizStart("neu"); render(); window.scrollTo(0, 0); }
+  else if (el.dataset.rezeptNeu) { zeige("erstmuster"); state.rezeptForm = "neu"; wizStart("neu"); render(); window.scrollTo(0, 0); }
   else if (el.dataset.wizVorlage) { wiz.phase = "vorlage"; render(); window.scrollTo(0, 0); }
   else if (el.dataset.wizLeer) { wiz.phase = "schritte"; wiz.schritt = 0; render(); window.scrollTo(0, 0); }
   else if (el.dataset.wizZurueckStart) { wiz.phase = "start"; render(); window.scrollTo(0, 0); }
@@ -1284,13 +1340,25 @@ document.addEventListener("click", e => {
     if (box) { box.classList.add("zeigen"); const i = box.querySelector("input"); if (i) i.focus(); }
   }
   else if (el.dataset.rezept) { state.rezept = el.dataset.rezept; render(); window.scrollTo(0, 0); }
-  else if (el.dataset.rezeptZurueck) { state.rezeptForm = null; wiz = null; state.rezept = null; state.verlauf = null; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.em) { state.emDetail = el.dataset.em; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.emZurueck) { state.emDetail = null; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.emLoeschen) {
+    if (!confirm("Erstmuster wirklich löschen? Der Verlauf geht mit verloren.")) return;
+    DB.set("rezepte", rezepte().filter(r => r.id !== el.dataset.emLoeschen));
+    state.emDetail = null; flash("Erstmuster gelöscht."); render(); window.scrollTo(0, 0);
+  }
+  else if (el.dataset.rezeptZurueck) { state.rezeptForm = null; wiz = null; state.verlauf = null; render(); window.scrollTo(0, 0); }
   else if (el.dataset.rezeptSpeichern) speichereRezept();
-  else if (el.dataset.rezeptBearbeiten) { state.rezeptForm = el.dataset.rezeptBearbeiten; wizStart(el.dataset.rezeptBearbeiten); render(); window.scrollTo(0, 0); }
+  else if (el.dataset.rezeptBearbeiten) { state.rezeptForm = el.dataset.rezeptBearbeiten; state.emDetail = el.dataset.rezeptBearbeiten; wizStart(el.dataset.rezeptBearbeiten); render(); window.scrollTo(0, 0); }
   else if (el.dataset.verlauf) { state.verlauf = el.dataset.verlauf; state.rezept = null; render(); window.scrollTo(0, 0); }
   else if (el.dataset.verlaufZurueck) { state.verlauf = null; state.rezept = el.dataset.verlaufZurueck; render(); window.scrollTo(0, 0); }
-  else if (el.dataset.vergleich) { state.vergleich = el.dataset.vergleich; state.rezept = null; render(); window.scrollTo(0, 0); }
-  else if (el.dataset.vergleichZurueck) { state.vergleich = null; state.rezept = el.dataset.vergleichZurueck; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.vergleich) { state.vergleich = el.dataset.vergleich; state.rezept = null; state.emDetail = null; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.vergleichZurueck) {
+    state.vergleich = null;
+    if (state.view === "erstmuster") state.emDetail = el.dataset.vergleichZurueck;
+    else state.rezept = el.dataset.vergleichZurueck;
+    render(); window.scrollTo(0, 0);
+  }
   else if (el.dataset.check) { if (!e.target.classList.contains("p-ist")) toggleCheck(el.dataset.check); }
   else if (el.dataset.ruestAbschluss) ruestAbschluss(el.dataset.ruestAbschluss);
   else if (el.dataset.erstmuster) sendeErstmuster(el.dataset.erstmuster);
@@ -1349,6 +1417,7 @@ document.getElementById("wochen-banner").addEventListener("click", wochenbericht
 document.addEventListener("input", e => {
   if (e.target.id === "spulen-suche") { spulenSuche = e.target.value; const l = document.getElementById("spulen-liste"); if (l) l.innerHTML = spulenListeHtml(); return; }
   if (e.target.id === "ruest-suche") { ruestSuche = e.target.value; const l = document.getElementById("ruest-liste"); if (l) l.innerHTML = ruestListeHtml(); return; }
+  if (e.target.id === "em-suche") { emSuche = e.target.value; const l = document.getElementById("em-liste"); if (l) l.innerHTML = emListeHtml(); return; }
   if (e.target.dataset && e.target.dataset.stamm && wiz) { wiz.stamm[e.target.dataset.stamm] = e.target.value; return; }
   if (e.target.classList && e.target.classList.contains("wiz-eigen") && wiz) { wiz.werte[e.target.dataset.feld] = e.target.value; return; }
   if (e.target.dataset && e.target.dataset.ist) { setzeIst(e.target.dataset.ist, e.target.value); return; }
@@ -1383,6 +1452,12 @@ function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("sp
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "4.0": [
+    "Die App heißt jetzt Drahtzug",
+    "Maschinen heißt jetzt Schichtübergabe",
+    "Neuer Bereich Erstmuster: anlegen, bearbeiten, Änderungen, PDF senden",
+    "Rüsten ist nur noch fürs Einrichten – Checkliste abarbeiten und abschließen",
+  ],
   "3.2": [
     "Verlegung Hand/Automatik als Auswahl, ebenso Spulengröße und Kontaktband",
     "Maschinentypen und KSS-Produkte sind jetzt änderbar – üblicher Wert als Knopf",

@@ -100,8 +100,8 @@ module.exports = async function () {
   d.querySelector("[data-save-spule]").click();
   check("Bearbeiten erzeugt keine Dublette", S("spulen").length === 1);
 
-  // --- Rüsten: Assistent, Checkliste, Versionierung ---
-  tab("ruesten");
+  // --- Erstmuster: Assistent; Rüsten: Checkliste ---
+  tab("erstmuster");
   d.querySelector("[data-rezept-neu]").click();
   d.querySelector("[data-wiz-leer]").click();
   check("Assistent: 5 Schritte", d.querySelectorAll(".wpunkt").length === 5);
@@ -123,10 +123,16 @@ module.exports = async function () {
   check("Muster gespeichert", S("rezepte").length === 1 && S("rezepte")[0].kuerzel === "VSW");
   check("Muster trägt Benutzer", S("rezepte")[0].benutzer === "güntzel");
 
-  setVal(d.getElementById("ruest-suche"), "VSW");
-  check("Muster-Suche findet VSW", d.getElementById("ruest-liste").innerHTML.indexOf("VSW") !== -1);
-  setVal(d.getElementById("ruest-suche"), "");
+  setVal(d.getElementById("em-suche"), "VSW");
+  check("Erstmuster-Suche findet VSW", d.getElementById("em-liste").innerHTML.indexOf("VSW") !== -1);
+  setVal(d.getElementById("em-suche"), "");
+  check("Erstmuster-Bereich hat Neu-Knopf", d.querySelector("[data-rezept-neu]") !== null);
 
+  tab("ruesten");
+  check("Rüsten hat keinen Neu-Knopf", d.querySelector("[data-rezept-neu]") === null);
+  setVal(d.getElementById("ruest-suche"), "VSW");
+  check("Rüst-Suche findet VSW", d.getElementById("ruest-liste").innerHTML.indexOf("VSW") !== -1);
+  setVal(d.getElementById("ruest-suche"), "");
   d.querySelector("[data-rezept]").click();
   check("Checkliste zeigt 1 Punkt", d.querySelectorAll(".rpunkt").length === 1);
   check("Zeile hat Name, Soll und Ist-Feld",
@@ -138,8 +144,13 @@ module.exports = async function () {
   check("Ist-Wert gespeichert", JSON.stringify(S("rezepte")[0].ruest_status).indexOf("17,5") !== -1);
   d.querySelector("[data-ruest-abschluss]").click();
   check("Rüstung im Verlauf", S("ruestungen").length === 1 && S("ruestungen")[0].benutzer === "güntzel");
+  check("Rüst-Checkliste ohne Bearbeiten", d.querySelector("[data-rezept-bearbeiten]") === null);
+  check("Rüst-Checkliste ohne PDF-Versand", d.querySelector("[data-erstmuster]") === null);
 
-  // Änderung erzeugt eine Version (Checkliste ist nach dem Abschluss weiter offen)
+  // Änderung erzeugt eine Version – jetzt über den Erstmuster-Bereich
+  tab("erstmuster");
+  d.querySelector("[data-em]").click();
+  check("Erstmuster-Detail zeigt Werte", d.getElementById("inhalt").innerHTML.indexOf("Eingetragene Werte") !== -1);
   d.querySelector("[data-rezept-bearbeiten]").click();
   weiter(); weiter();
   wizWert("Ziehgeschwindigkeit", "20");
@@ -151,7 +162,7 @@ module.exports = async function () {
     && d.getElementById("inhalt").innerHTML.indexOf("20") !== -1);
 
   // --- Erstmuster-Formulare: Auswahl bestimmt die abgefragten Werte ---
-  tab("ruesten");
+  tab("erstmuster");
   d.querySelector("[data-rezept-neu]").click();
   d.querySelector("[data-wiz-leer]").click();
   check("drei Formulare zur Auswahl", d.querySelectorAll(".formwahl").length === 3);
@@ -181,7 +192,7 @@ module.exports = async function () {
   check("Liste zeigt den Formularnamen", d.getElementById("inhalt").innerHTML.indexOf("Drahtzug allgemein") !== -1);
 
   // --- Vorschlagsknöpfe: übliche Werte, aber alles überschreibbar ---
-  tab("ruesten");
+  tab("erstmuster");
   d.querySelector("[data-rezept-neu]").click();
   d.querySelector("[data-wiz-leer]").click();
   stamm({ kuerzel: "DROP", aufbau: "1x1" });
@@ -196,7 +207,7 @@ module.exports = async function () {
   check("Auswahl wurde gespeichert", drop && drop.soll["Verlegung Hand/Automatik"] === "Automatik");
 
   // Angaben wie Maschinentyp stehen nicht in der Rüst-Checkliste
-  d.querySelector("[data-rezept]").click();          // neuestes Muster (DROP) öffnen
+  d.querySelector("[data-em]").click();              // neuestes Muster (DROP) öffnen
   d.querySelector("[data-rezept-bearbeiten]").click();
   weiter(); weiter(); weiter();                 // Draht-Typ -> Ablauf -> Ziehen -> Glühe
   const kssKnopf = d.querySelector('[data-wiz-wert="KSS-Produkt Glühe"]');
@@ -205,16 +216,18 @@ module.exports = async function () {
   weiter(); weiter();                           // Spuler, dann Fertig
   const drop2 = S("rezepte").find(r => r.kuerzel === "DROP");
   check("KSS-Produkt gespeichert", drop2.soll["KSS-Produkt Glühe"].indexOf("Bechem") !== -1);
-  // nach dem Bearbeiten ist die Checkliste bereits offen
+  // Checkliste liegt im Rüsten-Bereich
+  tab("ruesten");
+  d.querySelector("[data-rezept]").click();
   const namen = Array.from(d.querySelectorAll(".rpunkt .p-name")).map(e => e.textContent);
   check("Checkliste zeigt Einstellwert (Verlegung)", namen.indexOf("Verlegung Hand/Automatik") !== -1);
   check("Checkliste zeigt keine Angaben (KSS-Produkt)", namen.indexOf("KSS-Produkt Glühe") === -1);
 
-  // --- Erstmuster senden: Knopf vorhanden und erzeugt ein PDF zum Teilen ---
-  tab("ruesten");
-  d.querySelector("[data-rezept]").click();
+  // --- Erstmuster senden: Knopf sitzt im Erstmuster-Bereich ---
+  tab("erstmuster");
+  d.querySelector("[data-em]").click();
   const senden = d.querySelector("[data-erstmuster]");
-  check("Knopf 'Erstmuster senden' in der Muster-Ansicht", senden !== null && senden.textContent.indexOf("Erstmuster") !== -1);
+  check("Knopf 'Erstmuster senden' in der Erstmuster-Ansicht", senden !== null && senden.textContent.indexOf("Erstmuster") !== -1);
   let geteilt = null;
   w.navigator.canShare = () => true;
   w.navigator.share = o => { geteilt = o; return Promise.resolve(); };
