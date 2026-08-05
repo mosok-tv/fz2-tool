@@ -25,6 +25,12 @@ body { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
   font-family: inherit; cursor: pointer; }
 #wochen-banner.zeigen { display: block; }
 
+/* Hinweis-Banner: Sicherung fällig / Daten unverschlüsselt */
+#hinweis-banner { display: none; width: 100%; border: none; text-align: left;
+  background: #45525d; color: #fff; padding: 13px 16px; font-size: .92rem; font-weight: 600;
+  font-family: inherit; cursor: pointer; }
+#hinweis-banner.zeigen { display: block; }
+
 /* Installieren-Banner (Android/Chrome) */
 #install-banner { display: none; width: 100%; border: none; text-align: left;
   background: var(--blau); color: #fff; padding: 13px 16px; font-size: .92rem; font-weight: 600;
@@ -73,6 +79,7 @@ body { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
 .karte h2 { margin: 0 0 12px; font-size: 1rem; color: var(--blau);
   border-bottom: 2px solid var(--linie); padding-bottom: 6px; }
 .hinweis { font-size: .82rem; color: var(--grau); margin: 6px 0 0; }
+.hinweis.warnung { color: #8a5a05; background: #fdf3dc; padding: 8px 10px; border-radius: 8px; }
 .leer { color: var(--grau); text-align: center; padding: 20px 0; }
 
 label, .label { display: block; font-size: .85rem; color: #45525d; margin: 8px 0 4px; }

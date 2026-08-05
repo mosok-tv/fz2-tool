@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "4.4";
+const APP_VERSION = "4.5";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -72,6 +72,7 @@ function spulen()  { return DB.get("spulen", []); }
 function rezepte() { return DB.get("rezepte", []); }
 function ruestungen() { return DB.get("ruestungen", []); }
 function notloesungen() { return DB.get("notloesungen", []); }
+function papierkorb() { return DB.get("papierkorb", []); }
 // Stand eines Erstmusters: jede gespeicherte Änderung legt einen alten Stand in die Historie
 function standVon(r) { return ((r && r.historie && r.historie.length) || 0) + 1; }
 function benutzerListe() { return DB.get("benutzer", []); }
@@ -239,6 +240,12 @@ function zahl(s) {
   const n = parseFloat(s); return isNaN(n) ? 0 : n;
 }
 function fmt(n, nk) { if (nk === undefined) nk = 2; return n.toLocaleString("de-DE", { minimumFractionDigits: nk, maximumFractionDigits: nk }); }
+// "04.08.2026 22:07" -> vergleichbare Zahl (0 wenn leer/unbekannt)
+function zeitWert(s) {
+  const m = /^(\d{2})\.(\d{2})\.(\d{4})(?:\s+(\d{2}):(\d{2}))?/.exec(String(s || ""));
+  if (!m) return 0;
+  return Number(m[3] + m[2] + m[1] + (m[4] || "00") + (m[5] || "00"));
+}
 function hm(sek) { if (!sek || sek <= 0) return "–"; const min = Math.round(sek / 60), h = Math.floor(min / 60), m = min % 60; return h + " h " + String(m).padStart(2, "0") + " min"; }
 function flash(text) {
   const alt = document.querySelector(".flash"); if (alt) alt.remove();
@@ -1310,12 +1317,23 @@ function renderMehr() {
     <div class="karte">
       <h2>Datensicherung</h2>
       <p class="hinweis" style="margin-top:0">Gespeichert im Gerät: ${anz.m} Maschinen-Einträge, ${anz.a} Aufgaben, ${anz.s} Spulen-Berechnungen.</p>
-      <p class="hinweis">Erstelle regelmäßig eine Sicherung – so gehen deine Daten nie verloren, auch wenn das iPhone die App-Daten mal aufräumt.</p>
+      <p class="hinweis ${sicherungFaellig() ? "warnung" : ""}">Letzte Sicherung: <b>${letzteSicherung() ? new Date(letzteSicherung()).toLocaleDateString("de-DE") : "noch keine"}</b>${sicherungFaellig() ? " – fällig!" : ""}<br>
+        iOS räumt App-Daten von selbst auf, wenn die App länger nicht benutzt wird. Ohne Sicherung sind die Erstmuster dann weg.</p>
       <button class="btn" data-export="1">Sicherung erstellen / teilen</button>
-      <div class="label" style="margin-top:14px">Sicherung wiederherstellen</div>
+      <div class="label" style="margin-top:14px">Sicherung einlesen</div>
       <input type="file" id="import-file" accept="application/json,.json">
-      <button class="btn btn-grau" data-import="1" style="margin-top:10px">Aus Datei einlesen</button>
+      <button class="btn" data-import="1" style="margin-top:10px">Zusammenführen</button>
+      <p class="hinweis">Für den Abgleich zweier Geräte: fehlende Einträge kommen dazu, bei doppelten gewinnt der neuere. Nichts geht verloren.</p>
+      <button class="btn btn-grau btn-klein" data-import-ersetzen="1" style="margin-top:8px">Stattdessen alles ersetzen</button>
     </div>
+    ${papierkorb().length ? `<div class="karte">
+      <h2>Papierkorb</h2>
+      <p class="hinweis" style="margin-top:0">Gelöschtes bleibt ${PAPIERKORB_TAGE} Tage liegen und lässt sich zurückholen.</p>
+      ${papierkorb().slice().reverse().map(x => `<div class="eintrag" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <span><b>${esc(x.titel || "Eintrag")}</b><div class="meta">${esc(PK_ARTEN[x.art] || x.art)} · gelöscht ${esc(x.datum)}${x.benutzer ? " · " + esc(x.benutzer) : ""}</div></span>
+        <button class="btn btn-klein" data-pk-zurueck="${x.id}">Zurückholen</button>
+      </div>`).join("")}
+    </div>` : ""}
     <div class="karte">
       <h2>Maschinen</h2>
       <p class="hinweis" style="margin-top:0">Diese Maschinen erscheinen als Kacheln in der Schichtübergabe – mit Status, Notizen, Aufgaben und „Derzeit laufend".</p>
@@ -1355,7 +1373,7 @@ function renderMehr() {
         ? `<p class="hinweis" style="margin-top:0">✓ Die Daten sind <b>verschlüsselt</b>. Beim Öffnen muss der Code eingegeben werden – ohne ihn sind die Daten nicht lesbar.</p>
            <button class="btn btn-grau" data-code-aendern="1">Code ändern</button>
            <button class="btn btn-grau btn-klein" data-code-entfernen="1" style="margin-top:8px">Verschlüsselung entfernen</button>`
-        : `<p class="hinweis" style="margin-top:0">Die Daten liegen aktuell <b>unverschlüsselt</b> auf dem Gerät. Mit einem Code werden sie verschlüsselt – niemand ohne Code kommt dann heran.</p>
+        : `<p class="hinweis warnung" style="margin-top:0">Die Daten liegen aktuell <b>unverschlüsselt</b> auf dem Gerät. Wer das entsperrte Handy in die Hand bekommt, liest alle Erstmuster mit. Mit einem Code werden sie verschlüsselt.</p>
            <input type="password" id="code-neu" inputmode="numeric" maxlength="12" placeholder="Code festlegen (Zahlen)">
            <button class="btn" data-code-setzen="1" style="margin-top:10px">Verschlüsselung aktivieren</button>
            <p class="hinweis">Vorher unbedingt eine Sicherung machen und den Code sicher notieren – Code weg = Daten weg.</p>`}
@@ -1382,6 +1400,8 @@ async function codeSetzen() {
   VAULT_CODE = code;
   localStorage.setItem("sue_vault_enc", JSON.stringify(await verschluessle(VAULT, code)));
   raeumeAltePlainKeys();
+  DB.set("verschl_abgelehnt", false);
+  pruefeHinweisBanner();
   flash("Verschlüsselung aktiv."); render();
 }
 async function codeAendern() {
@@ -1397,7 +1417,99 @@ async function codeEntfernen() {
   VAULT_CODE = null;
   localStorage.removeItem("sue_vault_enc");
   localStorage.setItem("sue_vault", JSON.stringify(VAULT));
+  pruefeHinweisBanner();
   flash("Verschlüsselung entfernt."); render();
+}
+
+/* ---------- Papierkorb: Gelöschtes 30 Tage aufheben ---------- */
+const PAPIERKORB_TAGE = 30;
+const PK_ARTEN = { rezepte: "Erstmuster", todos: "Aufgabe", spulen: "Berechnung" };
+function inDenPapierkorb(art, eintrag, titel) {
+  const pk = papierkorb();
+  pk.push({ id: neueId(), art: art, titel: titel, daten: eintrag, datum: jetzt(), benutzer: wer() });
+  DB.set("papierkorb", pk);
+}
+function raeumePapierkorb() {
+  const grenze = Date.now() - PAPIERKORB_TAGE * 24 * 3600 * 1000;
+  const pk = papierkorb();
+  const bleibt = pk.filter(x => {
+    const m = /^(\d{2})\.(\d{2})\.(\d{4})/.exec(String(x.datum || ""));
+    if (!m) return true;                                   // ohne Datum lieber behalten
+    return new Date(+m[3], +m[2] - 1, +m[1]).getTime() >= grenze;
+  });
+  if (bleibt.length !== pk.length) DB.set("papierkorb", bleibt);
+}
+function stelleWiederHer(id) {
+  const pk = papierkorb(), x = pk.find(e => e.id === id);
+  if (!x) return;
+  const liste = DB.get(x.art, []);
+  if (!liste.some(e => e.id === (x.daten && x.daten.id))) liste.push(x.daten);
+  DB.set(x.art, liste);
+  DB.set("papierkorb", pk.filter(e => e.id !== id));
+  flash((PK_ARTEN[x.art] || "Eintrag") + " wiederhergestellt."); render();
+}
+
+/* ---------- Sicherung ---------- */
+function letzteSicherung() { return DB.get("sicherung_ts", null); }
+function sicherungFaellig() {
+  const ts = letzteSicherung();
+  const hatDaten = entries().length + todos().length + spulen().length + rezepte().length > 0;
+  if (!hatDaten) return false;
+  return ts == null || (Date.now() - ts >= WOCHE_MS);
+}
+// Ein Banner für beides – Sicherung geht vor, weil dabei Daten verloren gehen können
+function pruefeHinweisBanner() {
+  const b = document.getElementById("hinweis-banner");
+  if (!b) return;
+  if (sicherungFaellig()) {
+    b.textContent = "⬇ Sicherung fällig – " + (letzteSicherung() ? "die letzte ist über eine Woche her." : "es gibt noch keine.") + " Zum Sichern tippen.";
+    b.dataset.tun = "sicherung"; b.classList.add("zeigen");
+  } else if (!VAULT_CODE && !DB.get("verschl_abgelehnt", false)) {
+    b.textContent = "🔒 Die Daten liegen unverschlüsselt im Gerät. Zum Einrichten tippen.";
+    b.dataset.tun = "code"; b.classList.add("zeigen");
+  } else {
+    b.classList.remove("zeigen");
+  }
+}
+
+/* ---------- Sicherungen zusammenführen (zwei Geräte, ein Datenstand) ---------- */
+function letzteAenderung(x) {
+  return Math.max(zeitWert(x.geaendert_am), zeitWert(x.versendet_am), zeitWert(x.done_at),
+                  zeitWert(x.datum), zeitWert(x.created_at), zeitWert(x.seit));
+}
+function mischeListe(vorhanden, importiert) {
+  const map = {}, reihe = [];
+  (vorhanden || []).forEach(x => { if (x && x.id) { if (!map[x.id]) reihe.push(x.id); map[x.id] = x; } });
+  let neu = 0, aktualisiert = 0;
+  (importiert || []).forEach(x => {
+    if (!x || !x.id) return;
+    const alt = map[x.id];
+    if (!alt) { map[x.id] = x; reihe.push(x.id); neu++; }
+    else if (letzteAenderung(x) > letzteAenderung(alt)) { map[x.id] = x; aktualisiert++; }
+  });
+  return { liste: reihe.map(id => map[id]), neu: neu, aktualisiert: aktualisiert };
+}
+function fuehreZusammen(d) {
+  let neu = 0, akt = 0;
+  ["entries", "todos", "spulen", "rezepte", "ruestungen", "notloesungen"].forEach(k => {
+    if (!Array.isArray(d[k])) return;
+    const r = mischeListe(DB.get(k, []), d[k]);
+    DB.set(k, r.liste); neu += r.neu; akt += r.aktualisiert;
+  });
+  if (Array.isArray(d.maschinen)) {
+    const m = maschinen().slice();
+    d.maschinen.forEach(x => { if (typeof x === "string" && !m.some(v => v.toLowerCase() === x.toLowerCase())) { m.push(x); neu++; } });
+    DB.set("maschinen", m);
+  }
+  if (d.laufend && typeof d.laufend === "object") {
+    const l = laufend();
+    Object.keys(d.laufend).forEach(m => {
+      const fremd = d.laufend[m];
+      if (!l[m] || zeitWert(fremd.seit) > zeitWert(l[m].seit)) { l[m] = fremd; akt++; }
+    });
+    DB.set("laufend", l);
+  }
+  return { neu: neu, aktualisiert: akt };
 }
 
 function exportData() {
@@ -1405,7 +1517,9 @@ function exportData() {
                   rezepte: rezepte(), ruestungen: ruestungen(), maschinen: maschinen(), laufend: laufend(),
                   notloesungen: notloesungen() };
   const text = JSON.stringify(daten, null, 2);
-  const name = "schichtuebergabe-sicherung.json";
+  const name = "drahtzug-sicherung-" + jetzt().split(" ")[0].split(".").reverse().join("-") + ".json";
+  DB.set("sicherung_ts", Date.now());
+  pruefeHinweisBanner();
   const blob = new Blob([text], { type: "application/json" });
   const file = new File([blob], name, { type: "application/json" });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -1415,23 +1529,27 @@ function exportData() {
     document.body.appendChild(a); a.click(); a.remove(); flash("Sicherung heruntergeladen.");
   }
 }
-function importData() {
+// ersetzen = alles überschreiben (echte Wiederherstellung),
+// sonst zusammenführen: fehlende Einträge dazu, neuere gewinnen
+function importData(ersetzen) {
   const f = document.getElementById("import-file").files[0];
   if (!f) return flash("Bitte zuerst eine Datei wählen.");
+  if (ersetzen && !confirm('Alles ersetzen?\n\nDie Daten auf diesem Gerät werden durch die Datei ersetzt. Zum Abgleich zweier Geräte lieber „Zusammenführen" nehmen.')) return;
   const r = new FileReader();
   r.onload = () => {
     try {
       const d = JSON.parse(r.result);
       if (!d || typeof d !== "object") throw new Error();
-      if (Array.isArray(d.entries)) DB.set("entries", d.entries);
-      if (Array.isArray(d.todos)) DB.set("todos", d.todos);
-      if (Array.isArray(d.spulen)) DB.set("spulen", d.spulen);
-      if (Array.isArray(d.rezepte)) DB.set("rezepte", d.rezepte);
-      if (Array.isArray(d.ruestungen)) DB.set("ruestungen", d.ruestungen);
-      if (Array.isArray(d.maschinen)) DB.set("maschinen", d.maschinen);
-      if (Array.isArray(d.notloesungen)) DB.set("notloesungen", d.notloesungen);
-      if (d.laufend && typeof d.laufend === "object") DB.set("laufend", d.laufend);
-      flash("Sicherung eingelesen."); render();
+      if (ersetzen) {
+        ["entries", "todos", "spulen", "rezepte", "ruestungen", "maschinen", "notloesungen"]
+          .forEach(k => { if (Array.isArray(d[k])) DB.set(k, d[k]); });
+        if (d.laufend && typeof d.laufend === "object") DB.set("laufend", d.laufend);
+        flash("Sicherung eingelesen.");
+      } else {
+        const e = fuehreZusammen(d);
+        flash(e.neu + " neu, " + e.aktualisiert + " aktualisiert.");
+      }
+      render();
     } catch (e) { flash("Datei nicht lesbar."); }
   };
   r.readAsText(f);
@@ -1623,7 +1741,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt],[data-import-ersetzen],[data-pk-zurueck]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -1675,7 +1793,9 @@ document.addEventListener("click", e => {
   else if (el.dataset.em) { state.emDetail = el.dataset.em; render(); window.scrollTo(0, 0); }
   else if (el.dataset.emZurueck) { state.emDetail = null; render(); window.scrollTo(0, 0); }
   else if (el.dataset.emLoeschen) {
-    if (!confirm("Erstmuster wirklich löschen? Der Verlauf geht mit verloren.")) return;
+    if (!confirm("Erstmuster löschen?\n\nEs liegt " + PAPIERKORB_TAGE + " Tage im Papierkorb (unter Mehr) und kann von dort zurückgeholt werden.")) return;
+    const r = rezepte().find(x => x.id === el.dataset.emLoeschen);
+    if (r) inDenPapierkorb("rezepte", r, r.kuerzel + " " + r.aufbau);
     DB.set("rezepte", rezepte().filter(r => r.id !== el.dataset.emLoeschen));
     state.emDetail = null; flash("Erstmuster gelöscht."); render(); window.scrollTo(0, 0);
   }
@@ -1697,7 +1817,9 @@ document.addEventListener("click", e => {
   else if (el.dataset.erstmuster) sendeErstmuster(el.dataset.erstmuster);
   else if (el.dataset.gUebernehmen) { const g = gErmittelt(); if (g > 0) { document.getElementById("sp-g").value = fmt(g, 4); spRechne(); flash("G übernommen: " + fmt(g, 4) + " kg/km"); } else flash("Erst Gewicht und Länge der Spule eingeben."); }
   else if (el.dataset.export) exportData();
-  else if (el.dataset.import) importData();
+  else if (el.dataset.import) importData(false);
+  else if (el.dataset.importErsetzen) importData(true);
+  else if (el.dataset.pkZurueck) stelleWiederHer(el.dataset.pkZurueck);
   else if (el.dataset.abmelden) abmelden();
   else if (el.dataset.benutzerNeu) {
     const n = document.getElementById("nb-name").value.trim();
@@ -1782,6 +1904,12 @@ document.getElementById("fehler-knopf").addEventListener("click", () => {
   state.overlay = "fehler"; render(); window.scrollTo(0, 0);
 });
 document.getElementById("wochen-banner").addEventListener("click", wochenberichtMail);
+document.getElementById("hinweis-banner").addEventListener("click", e => {
+  if (e.currentTarget.dataset.tun === "sicherung") return exportData();
+  zeige("mehr");
+  const k = document.getElementById("code-neu");
+  if (k) { k.scrollIntoView(); k.focus(); }
+});
 document.addEventListener("input", e => {
   if ((e.target.id === "rv-a" || e.target.id === "rv-b") && state.rvergleich) {
     state.rvergleich[e.target.id === "rv-a" ? "a" : "b"] = e.target.value;
@@ -1824,11 +1952,28 @@ function toggleTodo(id) {
   const list = todos(); const t = list.find(x => x.id === id); if (!t) return;
   t.done = !t.done; t.done_at = t.done ? jetzt() : null; t.done_von = t.done ? wer() : null; DB.set("todos", list); render();
 }
-function delTodo(id) { if (!confirm("Aufgabe löschen?")) return; DB.set("todos", todos().filter(t => t.id !== id)); render(); }
-function delSpule(id) { if (!confirm("Berechnung löschen?")) return; DB.set("spulen", spulen().filter(s => s.id !== id)); render(); }
+function delTodo(id) {
+  if (!confirm("Aufgabe löschen?")) return;
+  const t = todos().find(x => x.id === id);
+  if (t) inDenPapierkorb("todos", t, t.text);
+  DB.set("todos", todos().filter(x => x.id !== id)); render();
+}
+function delSpule(id) {
+  if (!confirm("Berechnung löschen?")) return;
+  const s = spulen().find(x => x.id === id);
+  if (s) inDenPapierkorb("spulen", s, s.auftrag ? "Auftrag " + s.auftrag : "Berechnung vom " + s.created_at);
+  DB.set("spulen", spulen().filter(x => x.id !== id)); render();
+}
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "4.5": [
+    "Papierkorb: Gelöschtes bleibt 30 Tage liegen und lässt sich zurückholen",
+    "Sicherungen lassen sich zusammenführen – zwei Geräte, ein Datenstand",
+    "Erinnerung, wenn die letzte Sicherung über eine Woche her ist",
+    "Nach fünf falschen Code-Eingaben muss man warten",
+    "Die App bittet iOS, die Daten nicht wegzuräumen",
+  ],
   "4.4": [
     "Notlösungen zeigen jetzt die Maschine – in der App und im PDF",
     "Behoben: Zurück in der Rüst-Checkliste ging nicht zurück zur Liste",
@@ -2088,9 +2233,13 @@ document.getElementById("login-pw").addEventListener("keydown", e => { if (e.key
 
 function appLosgehen() {
   document.body.classList.toggle("gross", DB.get("grossschrift", false));
+  // iOS räumt Web-Apps auf, die länger nicht benutzt werden – das hier bittet um Bestandsschutz
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+  raeumePapierkorb();
   zeige("maschinen");
   aktualisiereFehlerBadge();
   pruefeWochenbericht();
+  pruefeHinweisBanner();
   zeigeWasNeu();
 }
 async function starteApp() {
@@ -2110,7 +2259,28 @@ function raeumeAltePlainKeys() {
   }
   weg.forEach(k => localStorage.removeItem(k));
 }
+/* Nach mehreren Fehlversuchen warten lassen – sonst probiert jemand den Code durch.
+   Zähler liegt außerhalb des Tresors, der ist zu dem Zeitpunkt ja noch zu. */
+const SPERRE_AB = 5;
+function sperrRest() {
+  const bis = parseInt(localStorage.getItem("dz_sperre_bis") || "0", 10);
+  return Math.max(0, Math.ceil((bis - Date.now()) / 1000));
+}
+let sperrTimer = null;
+function zeigeSperrWartezeit() {
+  const rest = sperrRest(), f = document.getElementById("sperre-fehler"), ok = document.getElementById("sperre-ok");
+  clearTimeout(sperrTimer);
+  if (rest > 0) {
+    f.textContent = "Zu viele Fehlversuche – noch " + (rest >= 60 ? Math.ceil(rest / 60) + " Minuten" : rest + " Sekunden") + " warten.";
+    ok.disabled = true;
+    sperrTimer = setTimeout(zeigeSperrWartezeit, 1000);
+  } else {
+    ok.disabled = false;
+    if (f.textContent.indexOf("Fehlversuche") !== -1) f.textContent = "";
+  }
+}
 async function entsperren() {
+  if (sperrRest() > 0) return zeigeSperrWartezeit();
   const code = document.getElementById("sperre-code").value;
   if (!code) return;
   const encRaw = localStorage.getItem("sue_vault_enc");
@@ -2127,14 +2297,25 @@ async function entsperren() {
       localStorage.setItem("sue_vault_enc", JSON.stringify(await verschluessle(VAULT, code)));
       raeumeAltePlainKeys();
     }
+    localStorage.removeItem("dz_sperre_fehl"); localStorage.removeItem("dz_sperre_bis");
     document.getElementById("sperre").hidden = true;
     document.getElementById("sperre-code").value = "";
     document.getElementById("sperre-fehler").textContent = "";
     starteApp();
   } catch (e) {
-    document.getElementById("sperre-fehler").textContent = "Falscher Code.";
+    const fehl = (parseInt(localStorage.getItem("dz_sperre_fehl") || "0", 10)) + 1;
+    localStorage.setItem("dz_sperre_fehl", String(fehl));
     document.getElementById("sperre-code").value = "";
-    document.getElementById("sperre-code").focus();
+    if (fehl >= SPERRE_AB) {
+      // 1, 2, 4, 8 … Minuten, höchstens eine Viertelstunde
+      const min = Math.min(15, Math.pow(2, fehl - SPERRE_AB));
+      localStorage.setItem("dz_sperre_bis", String(Date.now() + min * 60000));
+      zeigeSperrWartezeit();
+    } else {
+      document.getElementById("sperre-fehler").textContent =
+        "Falscher Code. Noch " + (SPERRE_AB - fehl) + " Versuch" + (SPERRE_AB - fehl === 1 ? "" : "e") + ".";
+      document.getElementById("sperre-code").focus();
+    }
   }
 }
 function pruefeSperre() {
@@ -2143,6 +2324,7 @@ function pruefeSperre() {
   if (enc || plain.pin_hash) {
     document.getElementById("sperre").hidden = false;
     document.getElementById("sperre-code").focus();
+    zeigeSperrWartezeit();
   } else {
     VAULT = plain; vaultBereit = true;
     starteApp();  // offen: keine Verschlüsselung

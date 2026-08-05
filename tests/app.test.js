@@ -306,6 +306,51 @@ module.exports = async function () {
   check("Liste warnt vor dem alten Blatt",
     d.getElementById("em-liste").innerHTML.indexOf("versendet war Stand 2") !== -1);
   d.querySelector("[data-em]").click();
+  // --- Papierkorb: Gelöschtes lässt sich zurückholen ---
+  tab("aufgaben");
+  d.querySelector("[data-del-todo]").click();
+  check("Aufgabe gelöscht", S("todos").length === 0);
+  check("Aufgabe liegt im Papierkorb", S("papierkorb").length === 1 && S("papierkorb")[0].art === "todos");
+  tab("mehr");
+  d.querySelector("[data-pk-zurueck]").click();
+  check("Aufgabe zurückgeholt", S("todos").length === 1 && S("todos")[0].text === "Öl nachfüllen");
+  check("Papierkorb wieder leer", S("papierkorb").length === 0);
+  check("Papierkorb-Karte verschwindet", d.querySelector("[data-pk-zurueck]") === null);
+
+  // --- Zwei Geräte: Sicherung zusammenführen statt überschreiben ---
+  const fremd = {
+    version: 1,
+    entries: [{ id: "fremd-1", machine: "Z67", status: "umbau", note: "von friedl", benutzer: "friedl", created_at: "05.08.2026 06:10" }],
+    rezepte: [{ id: "fremd-r", kuerzel: "CuSn", aufbau: "12×0,040", formular: "1350", soll: {},
+                historie: [], benutzer: "friedl", created_at: "05.08.2026 06:00", geaendert_am: "05.08.2026 06:00" }],
+    maschinen: ["Z49", "Z95"],
+    todos: [], spulen: [], ruestungen: [], notloesungen: [],
+  };
+  const eigeneEintraege = S("entries").length, eigeneMuster = S("rezepte").length;
+  w.eval("0");   // nur damit klar ist: der Import läuft über die Oberfläche
+  const datei = new w.File([JSON.stringify(fremd)], "sicherung.json", { type: "application/json" });
+  const feld = d.getElementById("import-file");
+  Object.defineProperty(feld, "files", { value: [datei], configurable: true });
+  d.querySelector("[data-import]").click();
+  await warte(120);
+  check("fremde Einträge kommen dazu", S("entries").length === eigeneEintraege + 1
+    && S("entries").some(e => e.note === "von friedl"));
+  check("eigene Einträge bleiben", S("entries").length > 1);
+  check("fremdes Muster kommt dazu", S("rezepte").length === eigeneMuster + 1);
+  check("eigenes Muster unverändert", S("rezepte").some(r => r.kuerzel === "VSW"
+    && r.soll["Ziehgeschwindigkeit"] === "21"));
+  check("neue Maschine übernommen", S("maschinen").indexOf("Z95") !== -1);
+  check("vorhandene Maschine nicht doppelt", S("maschinen").filter(m => m === "Z49").length === 1);
+
+  // dieselbe Datei nochmal einlesen ändert nichts
+  const standVorher = JSON.stringify(S("entries"));
+  Object.defineProperty(feld, "files", { value: [datei], configurable: true });
+  d.querySelector("[data-import]").click();
+  await warte(120);
+  check("zweiter Import erzeugt keine Dubletten", JSON.stringify(S("entries")) === standVorher);
+
+  tab("erstmuster");
+  d.querySelector('[data-em="' + S("rezepte").find(r => r.kuerzel === "VSW").id + '"]').click();
   check("Seite 2 zeigt die Änderung seit dem Versand",
     d.getElementById("inhalt").textContent.indexOf("Kommt beim Versand auf Seite 2") !== -1
     && d.getElementById("inhalt").innerHTML.indexOf("21") !== -1);

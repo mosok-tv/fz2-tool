@@ -69,6 +69,37 @@ module.exports = async function () {
   await login(w);
   check("Daten nach Entschlüsselung wieder da", d.getElementById("inhalt").innerHTML.indexOf("GEHEIM Kopf 3") !== -1);
 
+  // --- Durchprobieren wird ausgebremst ---
+  w = starteApp(null, verschluesselt); d = w.document;
+  await warte(60);
+  for (let i = 0; i < 4; i++) {
+    d.getElementById("sperre-code").value = "0000";
+    d.getElementById("sperre-ok").click();
+    await warte(150);
+  }
+  check("nach 4 Fehlversuchen noch offen", d.getElementById("sperre-ok").disabled === false);
+  check("Restversuche werden genannt", d.getElementById("sperre-fehler").textContent.indexOf("Noch 1 Versuch") !== -1);
+  d.getElementById("sperre-code").value = "0000";
+  d.getElementById("sperre-ok").click();
+  await warte(200);
+  check("nach 5 Fehlversuchen gesperrt", d.getElementById("sperre-ok").disabled === true);
+  check("Wartezeit wird angezeigt", d.getElementById("sperre-fehler").textContent.indexOf("Fehlversuche") !== -1);
+  check("Zähler überlebt den Neustart", w.localStorage.getItem("dz_sperre_fehl") === "5");
+  // auch mit richtigem Code kommt jetzt niemand rein
+  d.getElementById("sperre-code").value = "1234";
+  d.getElementById("sperre-ok").click();
+  await warte(200);
+  check("richtiger Code hilft während der Wartezeit nicht", d.getElementById("sperre").hidden === false);
+  // Wartezeit abgelaufen -> der Knopf geht von selbst wieder auf
+  w.localStorage.setItem("dz_sperre_bis", "0");
+  await warteBis(() => d.getElementById("sperre-ok").disabled === false, 80);
+  check("Knopf geht nach Ablauf von selbst wieder auf", d.getElementById("sperre-ok").disabled === false);
+  d.getElementById("sperre-code").value = "1234";
+  d.getElementById("sperre-ok").click();
+  await warteBis(() => d.getElementById("sperre").hidden === true);
+  check("nach der Wartezeit entsperrt der richtige Code", d.getElementById("sperre").hidden === true);
+  check("Zähler nach Erfolg zurückgesetzt", !w.localStorage.getItem("dz_sperre_fehl"));
+
   // --- Anmeldung ---
   w = starteApp({ benutzer: [{ name: "friedl", pw: "x" }], angemeldet: "" }); d = w.document;
   await warte(120);
