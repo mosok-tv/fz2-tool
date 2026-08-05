@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "4.5";
+const APP_VERSION = "4.6";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -14,6 +14,20 @@ const STATUS = {
   reparatur:  { label: "Reparatur",  farbe: "blue" },
   abruesten:  { label: "Abrüsten",   farbe: "violet" },
 };
+
+// Schichten im Werk – aus der Uhrzeit bestimmt, beim Eintrag änderbar
+const SCHICHTEN = [
+  { id: "frueh", label: "Frühschicht", von: 6, bis: 14 },
+  { id: "spaet", label: "Spätschicht", von: 14, bis: 22 },
+  { id: "nacht", label: "Nachtschicht", von: 22, bis: 6 },
+];
+function schichtJetzt(stunde) {
+  const h = (stunde === undefined) ? new Date().getHours() : stunde;
+  if (h >= 6 && h < 14) return "frueh";
+  if (h >= 14 && h < 22) return "spaet";
+  return "nacht";
+}
+function schichtLabel(id) { const s = SCHICHTEN.find(x => x.id === id); return s ? s.label : ""; }
 
 /* ---------- Speicher: in-memory Vault (offen oder verschlüsselt) ---------- */
 let VAULT = {};          // alle Daten im Arbeitsspeicher
@@ -276,7 +290,7 @@ window.addEventListener("error", e => logFehler("Programmfehler", e.message, (e.
 window.addEventListener("unhandledrejection", e => logFehler("Programmfehler", (e.reason && e.reason.message) || e.reason, e.reason && e.reason.stack));
 
 /* ---------- Router ---------- */
-const state = { view: "maschinen", maschine: null, overlay: null, rezept: null, rezeptForm: null, verlauf: null, vergleich: null, emDetail: null, rvergleich: null, abweichung: null };
+const state = { view: "maschinen", maschine: null, overlay: null, rezept: null, rezeptForm: null, verlauf: null, vergleich: null, emDetail: null, rvergleich: null, abweichung: null, kontrolle: null };
 let spModus = "summe";  // Berechnungsart der Vorzüge: "summe" | "kleinster"
 let ruestSuche = "";    // Suchbegriff im Rüsten-Bereich
 let emSuche = "";       // Suchbegriff im Erstmuster-Bereich
@@ -289,7 +303,7 @@ const titel = document.getElementById("kopf-titel");
 function zeige(view) {
   state.view = view; state.overlay = null; state.maschine = null; state.rezept = null;
   state.rezeptForm = null; state.verlauf = null; state.vergleich = null; state.emDetail = null;
-  state.rvergleich = null; state.abweichung = null;
+  state.rvergleich = null; state.abweichung = null; state.kontrolle = null;
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("aktiv", t.dataset.view === view));
   render();
   window.scrollTo(0, 0);
@@ -297,6 +311,7 @@ function zeige(view) {
 function render() {
   if (state.overlay === "fehler") return renderFehler();
   if (state.abweichung) return renderAbweichung();       // direkt nach dem Rüsten
+  if (state.kontrolle) return renderKontrolle();         // Werte mitten in der Schicht prüfen
   if (state.rvergleich) return renderRuestVergleich();   // aus jedem Bereich erreichbar
   if (state.view === "maschinen" && state.maschine) return renderMaschineDetail();
   if (state.view === "ruesten") {
@@ -332,11 +347,44 @@ function renderMaschinen() {
 
   const mitNotiz = liste.map(letzterEintrag).filter(e => e && e.note);
   let status = mitNotiz.length
-    ? mitNotiz.map(e => `<div class="eintrag"><b>${esc(e.machine)}</b> <span class="stat" style="color:var(--${STATUS[e.status].farbe})">${STATUS[e.status].label}</span> – ${esc(e.note)}<div class="meta">${e.created_at}${e.benutzer ? " · " + esc(e.benutzer) : ""}</div></div>`).join("")
+    ? mitNotiz.map(e => `<div class="eintrag"><b>${esc(e.machine)}</b> <span class="stat" style="color:var(--${STATUS[e.status].farbe})">${STATUS[e.status].label}</span> – ${esc(e.note)}<div class="meta">${e.created_at}${e.benutzer ? " · " + esc(e.benutzer) : ""}${e.schicht ? " · " + schichtLabel(e.schicht) : ""}</div></div>`).join("")
     : `<div class="leer">Keine Notizen vorhanden.</div>`;
 
   inhalt.innerHTML = `<div class="grid">${kacheln}</div>
+    ${neuSeitHtml()}
     <div class="karte"><h2>Maschinen-Status</h2>${status}</div>`;
+}
+
+/* Was ist passiert, seit ich das letzte Mal geschaut habe?
+   Genau das will man zu Schichtbeginn wissen – und nicht die ganze Liste. */
+function gesehenStand() { return (DB.get("gesehen", {}) || {})[wer()] || 0; }
+function neueEintraege() {
+  const seit = gesehenStand();
+  return entries().filter(e => zeitWert(e.created_at) > seit && e.benutzer !== wer());
+}
+function neuSeitHtml() {
+  const neu = neueEintraege().slice().reverse();
+  if (!gesehenStand()) {
+    // beim allerersten Mal gibt es keinen sinnvollen Vergleichspunkt
+    return `<div class="karte"><h2>Übergabe</h2>
+      <div class="leer">Ab jetzt steht hier, was seit deiner letzten Schicht passiert ist.</div>
+      <button class="btn btn-klein btn-grau" data-gesehen="1">Alles gelesen</button></div>`;
+  }
+  if (!neu.length) return `<div class="karte"><h2>Übergabe</h2>
+    <div class="leer">Nichts Neues seit deiner letzten Schicht.</div></div>`;
+  const liste = neu.map(e => `<div class="eintrag neu-eintrag">
+    <div><b>${esc(e.machine)}</b> <span class="stat" style="color:var(--${STATUS[e.status].farbe})">${STATUS[e.status].label}</span>${e.note ? " – " + esc(e.note) : ""}</div>
+    <div class="meta">${esc(e.created_at)}${e.schicht ? " · " + schichtLabel(e.schicht) : ""}${e.benutzer ? " · " + esc(e.benutzer) : ""}</div>
+  </div>`).join("");
+  return `<div class="karte"><h2>Seit deiner letzten Schicht <span class="rz-fort">${neu.length}</span></h2>
+    ${liste}
+    <button class="btn" data-gesehen="1" style="margin-top:10px">Zur Kenntnis genommen</button></div>`;
+}
+function merkeGesehen() {
+  const g = DB.get("gesehen", {}) || {};
+  g[wer()] = zeitWert(jetzt());
+  DB.set("gesehen", g);
+  flash("Übergabe zur Kenntnis genommen."); render(); window.scrollTo(0, 0);
 }
 
 /* Kurzname des laufenden Drahts, z. B. „VSW 6×0,050" */
@@ -347,7 +395,7 @@ function renderMaschineDetail() {
   titel.innerHTML = `${m}`;
   const hist = entries().filter(e => e.machine === m).slice().reverse();
   let histHtml = hist.length
-    ? hist.map(e => `<div class="eintrag"><span class="punkt d-${STATUS[e.status].farbe}"></span><span class="stat">${STATUS[e.status].label}</span>${e.note ? " – " + esc(e.note) : ""}<div class="meta">${e.created_at}${e.benutzer ? " · " + esc(e.benutzer) : ""}</div></div>`).join("")
+    ? hist.map(e => `<div class="eintrag"><span class="punkt d-${STATUS[e.status].farbe}"></span><span class="stat">${STATUS[e.status].label}</span>${e.note ? " – " + esc(e.note) : ""}<div class="meta">${e.created_at}${e.schicht ? " · " + schichtLabel(e.schicht) : ""}${e.benutzer ? " · " + esc(e.benutzer) : ""}</div></div>`).join("")
     : `<div class="leer">Noch kein Eintrag.</div>`;
 
   let optionen = Object.keys(STATUS).map(k =>
@@ -360,6 +408,9 @@ function renderMaschineDetail() {
       <h2>Neuer Eintrag für ${m}</h2>
       <div class="label">Status</div>
       <div class="status-wahl">${optionen}</div>
+      <div class="label">Schicht</div>
+      <select id="eintrag-schicht">${SCHICHTEN.map(s =>
+        `<option value="${s.id}"${s.id === schichtJetzt() ? " selected" : ""}>${s.label}</option>`).join("")}</select>
       <div class="label">Notiz (optional)</div>
       <textarea id="notiz" placeholder="z. B. Drahtriss an Kopf 3"></textarea>
       <button class="btn" data-speichern-eintrag="1" style="margin-top:12px">Eintrag speichern</button>
@@ -384,34 +435,65 @@ function laufendHtml(m) {
       ${l.klartext || l.auftrag ? `<div class="lauf-text">${esc([l.klartext, l.auftrag ? "Auftrag " + l.auftrag : ""].filter(Boolean).join(" · "))}</div>` : ""}
       <div class="meta">${esc(formularName(l.formular))} · gerüstet ${esc(l.seit || "")}${l.benutzer ? " · " + esc(l.benutzer) : ""}</div>
       ${werte ? `<div class="lauf-werte">${werte}</div>` : ""}
+      ${l.geprueft ? `<div class="meta">zuletzt geprüft ${esc(l.geprueft)}${l.geprueft_von ? " · " + esc(l.geprueft_von) : ""}</div>` : ""}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-        ${vergleichbar ? `<button class="btn btn-klein" data-rvergleich="${esc(l.rezept_id)}">Werte vergleichen</button>` : ""}
+        <button class="btn btn-klein" data-kontrolle="${esc(m)}">Werte prüfen</button>
+        ${vergleichbar ? `<button class="btn btn-klein btn-grau" data-rvergleich="${esc(l.rezept_id)}">Werte vergleichen</button>` : ""}
         <button class="btn btn-klein btn-grau" data-laufend-ende="${esc(m)}">Läuft nicht mehr</button>
       </div>
     </div>`;
 }
 
 /* ---------- Ansicht: Aufgaben ---------- */
+function heuteIso() { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+function isoDeutsch(iso) { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ""); return m ? m[3] + "." + m[2] + "." + m[1] : ""; }
+// „überfällig", „heute", „morgen" oder das Datum – so sieht man auf einen Blick, was drängt
+function faelligText(t) {
+  if (!t.faellig) return "";
+  const heute = heuteIso();
+  if (t.faellig < heute) return `<span class="faellig ueber">überfällig seit ${isoDeutsch(t.faellig)}</span>`;
+  if (t.faellig === heute) return `<span class="faellig heute">heute fällig</span>`;
+  const morgen = new Date(Date.now() + 86400000);
+  const mIso = morgen.getFullYear() + "-" + String(morgen.getMonth() + 1).padStart(2, "0") + "-" + String(morgen.getDate()).padStart(2, "0");
+  if (t.faellig === mIso) return `<span class="faellig">morgen fällig</span>`;
+  return `<span class="faellig">bis ${isoDeutsch(t.faellig)}</span>`;
+}
 function renderAufgaben() {
   titel.textContent = "Aufgaben";
-  const items = todos().slice().sort((a, b) => (a.done - b.done)).reverse();
+  // offen vor erledigt, dann wichtig, dann nach Termin – ohne Termin ans Ende
+  const items = todos().slice().sort((a, b) => {
+    if (!!a.done !== !!b.done) return a.done ? 1 : -1;
+    if (!!a.wichtig !== !!b.wichtig) return a.wichtig ? -1 : 1;
+    const fa = a.faellig || "9999-99-99", fb = b.faellig || "9999-99-99";
+    if (fa !== fb) return fa < fb ? -1 : 1;
+    return zeitWert(b.created_at) - zeitWert(a.created_at);
+  });
   const liste = items.length ? items.map(t => `
-    <div class="eintrag">
-      <div class="${t.done ? "durchgestrichen" : ""}">${t.machine ? "<b>" + t.machine + ":</b> " : ""}${esc(t.text)}</div>
+    <div class="eintrag${!t.done && t.faellig && t.faellig < heuteIso() ? " ueberfaellig" : ""}">
+      <div class="${t.done ? "durchgestrichen" : ""}">${t.wichtig && !t.done ? '<span class="wichtig-stern">★</span> ' : ""}${t.machine ? "<b>" + esc(t.machine) + ":</b> " : ""}${esc(t.text)}</div>
+      ${!t.done ? faelligText(t) : ""}
       <div class="meta">${t.created_at}${t.benutzer ? " · " + esc(t.benutzer) : ""}${t.done && t.done_at ? " · ✓ erledigt " + t.done_at + (t.done_von ? " von " + esc(t.done_von) : "") : ""}</div>
       <button class="btn btn-klein ${t.done ? "btn-grau" : ""}" data-toggle-todo="${t.id}" style="margin-top:6px">${t.done ? "wieder offen" : "✓ erledigt"}</button>
       <button class="btn btn-klein btn-rot" data-del-todo="${t.id}" style="margin-top:6px;margin-left:6px">Löschen</button>
     </div>`).join("") : `<div class="leer">Nichts offen. 🎉</div>`;
 
   const maschinenOpts = maschinen().map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join("");
+  const offen = todos().filter(t => !t.done);
+  const ueber = offen.filter(t => t.faellig && t.faellig < heuteIso()).length;
   inhalt.innerHTML = `
     <div class="karte">
       <div class="label">Neue Aufgabe</div>
       <input type="text" id="todo-text" placeholder="Was ist zu tun?">
-      <div class="label">Maschine (optional)</div>
-      <select id="todo-maschine"><option value="">Allgemein</option>${maschinenOpts}</select>
+      <div class="zwei" style="margin-top:8px">
+        <div><div class="label">Maschine (optional)</div>
+          <select id="todo-maschine"><option value="">Allgemein</option>${maschinenOpts}</select></div>
+        <div><div class="label">Bis wann (optional)</div>
+          <input type="date" id="todo-faellig"></div>
+      </div>
+      <label class="ankreuz"><input type="checkbox" id="todo-wichtig"> Wichtig – nach oben stellen</label>
       <button class="btn" data-add-todo="1" style="margin-top:12px">Hinzufügen</button>
     </div>
+    ${ueber ? `<div class="karte"><p class="hinweis warnung" style="margin:0">${ueber} ${ueber === 1 ? "Aufgabe ist" : "Aufgaben sind"} überfällig.</p></div>` : ""}
     <div class="karte"><h2>Liste</h2>${liste}</div>`;
 }
 
@@ -926,7 +1008,7 @@ function renderVerlauf() {
       const i = e.ist[f.name];
       return `<div class="v-zeile"><span>${esc(f.name)}</span><span>Soll ${esc(i.soll || "–")} · Ist <b>${esc(i.wert || "–")}</b></span></div>`;
     }).join("");
-    return `<div class="eintrag"><div><b>${e.datum}</b>${e.maschine ? " · " + esc(e.maschine) : ""}${e.benutzer ? " · " + esc(e.benutzer) : ""}</div>${zeilen || '<div class="meta">keine Ist-Werte notiert</div>'}</div>`;
+    return `<div class="eintrag"><div><b>${e.datum}</b>${e.maschine ? " · " + esc(e.maschine) : ""}${e.benutzer ? " · " + esc(e.benutzer) : ""} <span class="rz-vers">${e.art === "kontrolle" ? "Kontrolle" : "Rüstung"}</span></div>${zeilen || '<div class="meta">keine Ist-Werte notiert</div>'}</div>`;
   }).join("") : `<div class="leer">Noch keine abgeschlossene Rüstung.</div>`;
   inhalt.innerHTML = `
     <button class="btn btn-grau btn-klein" data-verlauf-zurueck="${r ? r.id : ''}">‹ Zurück</button>
@@ -994,6 +1076,79 @@ function anlageDaten(r) {
   }
   const offen = notloesungen().filter(n => n.rezept_id === r.id && !n.erledigt && !n.versendet_am);
   return { stand: stand, versand: v, aenderungen: aenderungen, notloesungen: offen };
+}
+
+/* ---------- Kontrolle mitten in der Schicht: läuft die Maschine noch nach Muster? ---------- */
+function renderKontrolle() {
+  const m = state.kontrolle;
+  const l = laufend()[m];
+  if (!l) { state.kontrolle = null; return render(); }
+  titel.textContent = m + " prüfen";
+  const r = rezepte().find(x => x.id === l.rezept_id);
+  const soll = (r && r.soll) || {};
+  const felder = formularFelder((r && r.formular) || l.formular)
+    .filter(f => !f.angabe && (soll[f.name] || (l.ist && l.ist[f.name])));
+  const zeilen = felder.map(f => {
+    const sollWert = soll[f.name] || ((l.ist && l.ist[f.name] && l.ist[f.name].soll) || "");
+    const zuletzt = (l.ist && l.ist[f.name] && l.ist[f.name].wert) || "";
+    return `<div class="rpunkt">
+      <div class="p-body">
+        <div class="p-kopf">
+          <span class="p-name">${esc(f.name)}</span>
+          <span class="p-soll">Soll <b>${esc(sollWert)}</b>${f.einheit ? ` <span class="p-einheit">${esc(f.einheit)}</span>` : ""}</span>
+        </div>
+        <input type="text" class="p-ist" data-kist="${esc(f.name)}" placeholder="${zuletzt ? "zuletzt " + esc(zuletzt) : "abgelesener Wert"}">
+      </div>
+    </div>`;
+  }).join("");
+  inhalt.innerHTML = `
+    <button class="btn btn-grau btn-klein" data-kontrolle-zurueck="1">‹ Zurück</button>
+    <div class="karte" style="margin-top:12px">
+      <h2>${esc(drahtName(l))} auf ${esc(m)}</h2>
+      <p class="hinweis" style="margin-top:0">Abgelesene Werte eintragen – nur ausgefüllte zählen. Weicht etwas ab, fragt die App danach wie beim Rüsten.</p>
+    </div>
+    <div class="karte"><h2>Werte an der Maschine</h2>
+      ${zeilen || '<div class="leer">Für diesen Draht sind keine Werte hinterlegt.</div>'}</div>
+    <div class="karte"><button class="btn" data-kontrolle-speichern="${esc(m)}">Kontrolle speichern</button></div>`;
+}
+
+function speichereKontrolle(m) {
+  const lauf = laufend(), l = lauf[m];
+  if (!l) return;
+  const r = rezepte().find(x => x.id === l.rezept_id);
+  const soll = (r && r.soll) || {};
+  const felder = formularFelder((r && r.formular) || l.formular);
+  const ist = {}, abweichungen = [];
+  let gezaehlt = 0;
+  document.querySelectorAll("[data-kist]").forEach(el => {
+    const name = el.dataset.kist, wert = el.value.trim();
+    if (!wert) return;
+    gezaehlt++;
+    const f = felder.find(x => x.name === name) || {};
+    const sollWert = String(soll[name] || ((l.ist && l.ist[name] && l.ist[name].soll) || ""));
+    ist[name] = { soll: sollWert, wert: wert, erledigt: true };
+    if (sollWert && wert !== sollWert) {
+      abweichungen.push({ name: name, soll: sollWert, ist: wert, einheit: f.einheit || "", grund: "" });
+    }
+  });
+  if (!gezaehlt) return flash("Bitte mindestens einen Wert eintragen.");
+  const zeit = jetzt();
+  const rl = ruestungen();
+  rl.push({ id: neueId(), art: "kontrolle", rezept_id: l.rezept_id, kuerzel: l.kuerzel,
+            maschine: m, benutzer: wer(), datum: zeit, ist: ist });
+  DB.set("ruestungen", rl);
+  // die laufende Maschine zeigt ab jetzt die gerade abgelesenen Werte
+  Object.keys(ist).forEach(k => { if (!l.ist) l.ist = {}; l.ist[k] = ist[k]; });
+  l.geprueft = zeit; l.geprueft_von = wer();
+  DB.set("laufend", lauf);
+  state.kontrolle = null;
+  if (abweichungen.length && l.rezept_id) {
+    state.abweichung = { rezept_id: l.rezept_id, maschine: m, felder: abweichungen, phase: "frage" };
+    flash(abweichungen.length + (abweichungen.length === 1 ? " Wert weicht ab." : " Werte weichen ab."));
+  } else {
+    flash("Kontrolle gespeichert – alles wie im Muster.");
+  }
+  render(); window.scrollTo(0, 0);
 }
 
 /* ---------- Nach dem Rüsten: Abweichung übernehmen oder als Notlösung festhalten ---------- */
@@ -1080,7 +1235,7 @@ function renderRuestVergleich() {
   const neu = liste.find(x => x.id === rv.a), alt = liste.find(x => x.id === rv.b);
   // Nummer davor: zwei Rüstungen in derselben Minute wären sonst nicht zu unterscheiden
   const opt = (gewaehlt) => liste.map((x, i) =>
-    `<option value="${esc(x.id)}"${x.id === gewaehlt ? " selected" : ""}>Nr. ${nr(x.id)}${i === 0 ? " (neueste)" : ""} · ${esc(x.datum)}${x.benutzer ? " · " + esc(x.benutzer) : ""}</option>`).join("");
+    `<option value="${esc(x.id)}"${x.id === gewaehlt ? " selected" : ""}>Nr. ${nr(x.id)}${i === 0 ? " (neueste)" : ""} · ${x.art === "kontrolle" ? "Kontrolle" : "Rüstung"} · ${esc(x.datum)}${x.benutzer ? " · " + esc(x.benutzer) : ""}</option>`).join("");
 
   const zeilen = vergleicheRuestungen(r ? r.formular : null, alt, neu);
   const geaendert = zeilen.filter(z => z.geaendert), gleich = zeilen.filter(z => !z.geaendert);
@@ -1741,7 +1896,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt],[data-import-ersetzen],[data-pk-zurueck]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt],[data-import-ersetzen],[data-pk-zurueck],[data-gesehen],[data-kontrolle],[data-kontrolle-zurueck],[data-kontrolle-speichern]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -1853,6 +2008,10 @@ document.addEventListener("click", e => {
     const lauf = laufend(); if (lauf[n]) { delete lauf[n]; DB.set("laufend", lauf); }
     flash("Maschine entfernt."); render();
   }
+  else if (el.dataset.gesehen) merkeGesehen();
+  else if (el.dataset.kontrolle) { state.kontrolle = el.dataset.kontrolle; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.kontrolleZurueck) { state.kontrolle = null; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.kontrolleSpeichern) speichereKontrolle(el.dataset.kontrolleSpeichern);
   else if (el.dataset.abwUebernehmen) uebernehmeAbweichungen();
   else if (el.dataset.abwNotloesung) { state.abweichung.phase = "grund"; render(); window.scrollTo(0, 0); }
   else if (el.dataset.abwSpeichern) speichereNotloesungen(true);
@@ -1937,15 +2096,20 @@ function speichereEintrag() {
   if (!st) return flash("Bitte einen Status wählen.");
   const note = document.getElementById("notiz").value.trim();
   const list = entries();
-  list.push({ id: neueId(), machine: state.maschine, status: st, note: note, benutzer: wer(), created_at: jetzt() });
+  const sw = document.getElementById("eintrag-schicht");
+  list.push({ id: neueId(), machine: state.maschine, status: st, note: note,
+              schicht: sw ? sw.value : schichtJetzt(), benutzer: wer(), created_at: jetzt() });
   DB.set("entries", list); flash("Eintrag gespeichert."); render(); window.scrollTo(0, 0);
 }
 function addTodo() {
   const text = document.getElementById("todo-text").value.trim();
   if (!text) return flash("Bitte einen Text eingeben.");
   const machine = document.getElementById("todo-maschine").value;
+  const faellig = document.getElementById("todo-faellig").value || null;
+  const wichtig = document.getElementById("todo-wichtig").checked;
   const list = todos();
-  list.push({ id: neueId(), text: text, machine: machine || null, done: false, benutzer: wer(), created_at: jetzt() });
+  list.push({ id: neueId(), text: text, machine: machine || null, faellig: faellig, wichtig: wichtig,
+              done: false, benutzer: wer(), created_at: jetzt() });
   DB.set("todos", list); render();
 }
 function toggleTodo(id) {
@@ -1967,6 +2131,12 @@ function delSpule(id) {
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "4.6": [
+    "Übergabe zeigt, was seit deiner letzten Schicht dazukam",
+    "Einträge bekommen die Schicht (Früh/Spät/Nacht)",
+    "Aufgaben mit Termin und Wichtig-Kennzeichen, Überfälliges steht oben",
+    "Neu: Werte prüfen an der laufenden Maschine – Abweichungen wie beim Rüsten",
+  ],
   "4.5": [
     "Papierkorb: Gelöschtes bleibt 30 Tage liegen und lässt sich zurückholen",
     "Sicherungen lassen sich zusammenführen – zwei Geräte, ein Datenstand",

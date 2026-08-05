@@ -19,6 +19,13 @@ module.exports = async function () {
   d.querySelector("[data-speichern-eintrag]").click();
   check("Eintrag gespeichert", S("entries")[0].machine === "Z49" && S("entries")[0].status === "drahtriss");
   check("Eintrag trägt den Benutzer", S("entries")[0].benutzer === "güntzel");
+  check("Eintrag bekommt eine Schicht", ["frueh", "spaet", "nacht"].indexOf(S("entries")[0].schicht) !== -1);
+  tab("maschinen");
+  check("Übergabe-Karte beim ersten Mal", d.getElementById("inhalt").textContent.indexOf("Ab jetzt steht hier") !== -1);
+  d.querySelector("[data-gesehen]").click();
+  check("gelesen wird je Benutzer gemerkt", (S("gesehen") || {})["güntzel"] > 0);
+  check("eigene Einträge gelten nicht als neu",
+    d.getElementById("inhalt").textContent.indexOf("Nichts Neues seit deiner letzten Schicht") !== -1);
   tab("maschinen");
   check("Kachel Z49 jetzt rot", d.querySelector('[data-maschine="Z49"]').classList.contains("bg-red"));
 
@@ -28,6 +35,17 @@ module.exports = async function () {
   d.getElementById("todo-maschine").value = "Z67";
   d.querySelector("[data-add-todo]").click();
   check("Aufgabe gespeichert", S("todos")[0].text === "Öl nachfüllen" && S("todos")[0].machine === "Z67");
+  d.getElementById("todo-text").value = "Ziehsteine tauschen";
+  d.getElementById("todo-faellig").value = "2020-01-01";      // absichtlich in der Vergangenheit
+  d.getElementById("todo-wichtig").checked = true;
+  d.querySelector("[data-add-todo]").click();
+  const wichtige = S("todos").find(t => t.text === "Ziehsteine tauschen");
+  check("Termin gespeichert", wichtige.faellig === "2020-01-01" && wichtige.wichtig === true);
+  check("überfällige Aufgabe steht oben",
+    d.querySelectorAll(".eintrag")[0].textContent.indexOf("Ziehsteine tauschen") !== -1);
+  check("überfällig wird benannt", d.querySelector(".faellig.ueber") !== null);
+  check("Warnung nennt die Zahl", d.getElementById("inhalt").textContent.indexOf("1 Aufgabe ist überfällig") !== -1);
+  d.querySelector('[data-del-todo="' + wichtige.id + '"]').click();
   d.querySelector("[data-toggle-todo]").click();
   check("Aufgabe abgehakt mit Name", S("todos")[0].done === true && S("todos")[0].done_von === "güntzel");
 
@@ -308,19 +326,24 @@ module.exports = async function () {
   d.querySelector("[data-em]").click();
   // --- Papierkorb: Gelöschtes lässt sich zurückholen ---
   tab("aufgaben");
-  d.querySelector("[data-del-todo]").click();
-  check("Aufgabe gelöscht", S("todos").length === 0);
-  check("Aufgabe liegt im Papierkorb", S("papierkorb").length === 1 && S("papierkorb")[0].art === "todos");
+  const pkVorher = (S("papierkorb") || []).length, todosVorher = S("todos").length;
+  d.querySelector('[data-del-todo="' + S("todos")[0].id + '"]').click();
+  check("Aufgabe gelöscht", S("todos").length === todosVorher - 1);
+  const pk = S("papierkorb");
+  check("Aufgabe liegt im Papierkorb", pk.length === pkVorher + 1
+    && pk[pk.length - 1].art === "todos" && pk[pk.length - 1].titel === "Öl nachfüllen");
   tab("mehr");
-  d.querySelector("[data-pk-zurueck]").click();
-  check("Aufgabe zurückgeholt", S("todos").length === 1 && S("todos")[0].text === "Öl nachfüllen");
-  check("Papierkorb wieder leer", S("papierkorb").length === 0);
-  check("Papierkorb-Karte verschwindet", d.querySelector("[data-pk-zurueck]") === null);
+  d.querySelector('[data-pk-zurueck="' + pk[pk.length - 1].id + '"]').click();
+  check("Aufgabe zurückgeholt", S("todos").some(t => t.text === "Öl nachfüllen"));
+  check("Papierkorb-Eintrag verbraucht", S("papierkorb").length === pkVorher);
 
   // --- Zwei Geräte: Sicherung zusammenführen statt überschreiben ---
   const fremd = {
     version: 1,
-    entries: [{ id: "fremd-1", machine: "Z67", status: "umbau", note: "von friedl", benutzer: "friedl", created_at: "05.08.2026 06:10" }],
+    entries: [
+      { id: "fremd-1", machine: "Z67", status: "umbau", note: "von friedl", benutzer: "friedl", created_at: "31.12.2026 06:10" },
+      { id: "fremd-alt", machine: "Z68", status: "umbau", note: "uralt von friedl", benutzer: "friedl", created_at: "01.01.2020 06:10" },
+    ],
     rezepte: [{ id: "fremd-r", kuerzel: "CuSn", aufbau: "12×0,040", formular: "1350", soll: {},
                 historie: [], benutzer: "friedl", created_at: "05.08.2026 06:00", geaendert_am: "05.08.2026 06:00" }],
     maschinen: ["Z49", "Z95"],
@@ -333,7 +356,7 @@ module.exports = async function () {
   Object.defineProperty(feld, "files", { value: [datei], configurable: true });
   d.querySelector("[data-import]").click();
   await warte(120);
-  check("fremde Einträge kommen dazu", S("entries").length === eigeneEintraege + 1
+  check("fremde Einträge kommen dazu", S("entries").length === eigeneEintraege + 2
     && S("entries").some(e => e.note === "von friedl"));
   check("eigene Einträge bleiben", S("entries").length > 1);
   check("fremdes Muster kommt dazu", S("rezepte").length === eigeneMuster + 1);
@@ -348,6 +371,14 @@ module.exports = async function () {
   d.querySelector("[data-import]").click();
   await warte(120);
   check("zweiter Import erzeugt keine Dubletten", JSON.stringify(S("entries")) === standVorher);
+
+  // --- Übergabe: was seit der letzten Schicht dazukam ---
+  tab("maschinen");
+  check("neuer fremder Eintrag steht unter Neu", d.querySelectorAll(".neu-eintrag").length === 1
+    && d.querySelector(".neu-eintrag").textContent.indexOf("von friedl") !== -1);
+  check("alter fremder Eintrag gilt nicht als neu",
+    !Array.from(d.querySelectorAll(".neu-eintrag")).some(x => x.textContent.indexOf("uralt") !== -1));
+  check("Zähler stimmt", d.getElementById("inhalt").textContent.indexOf("Seit deiner letzten Schicht") !== -1);
 
   tab("erstmuster");
   d.querySelector('[data-em="' + S("rezepte").find(r => r.kuerzel === "VSW").id + '"]').click();
@@ -457,6 +488,28 @@ module.exports = async function () {
     kopiert && kopiert.indexOf("tigga232332@gmail.com") !== -1 && kopiert.indexOf("güntzel") !== -1);
   tab("aufgaben");
   check("Tab-Wechsel verlässt Fehler-Ansicht", d.getElementById("kopf-titel").textContent === "Aufgaben");
+
+  // --- Kontrolle mitten in der Schicht ---
+  tab("maschinen");
+  d.querySelector('[data-maschine="Z49"]').click();
+  const nlVorher = S("notloesungen").length, ruestVorher = S("ruestungen").length;
+  d.querySelector("[data-kontrolle]").click();
+  check("Kontroll-Maske zeigt die Soll-Werte", d.querySelectorAll("[data-kist]").length >= 1
+    && d.getElementById("inhalt").textContent.indexOf("VSW") !== -1);
+  setVal(d.querySelector('[data-kist="Ziehgeschwindigkeit"]'), "19");   // Soll steht auf 21
+  d.querySelector("[data-kontrolle-speichern]").click();
+  check("Kontrolle im Verlauf", S("ruestungen").length === ruestVorher + 1
+    && S("ruestungen")[S("ruestungen").length - 1].art === "kontrolle");
+  check("Kontrolle merkt sich die Maschine", S("ruestungen")[S("ruestungen").length - 1].maschine === "Z49");
+  check("Abweichung wird auch bei der Kontrolle abgefragt", d.querySelectorAll(".abw-zeile").length === 1);
+  d.querySelector("[data-abw-notloesung]").click();
+  d.querySelector("[data-abw-ohne-grund]").click();
+  check("Notlösung aus der Kontrolle gespeichert", S("notloesungen").length === nlVorher + 1
+    && S("notloesungen")[S("notloesungen").length - 1].maschine === "Z49");
+  check("laufende Maschine zeigt den geprüften Wert", S("laufend").Z49.ist["Ziehgeschwindigkeit"].wert === "19");
+  check("Prüfzeitpunkt vermerkt", !!S("laufend").Z49.geprueft);
+  check("Karte nennt die letzte Prüfung",
+    d.querySelector(".karte.laufend").textContent.indexOf("zuletzt geprüft") !== -1);
 
   return check.ergebnis();
 };

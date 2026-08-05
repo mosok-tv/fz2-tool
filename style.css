@@ -80,6 +80,18 @@ body { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
   border-bottom: 2px solid var(--linie); padding-bottom: 6px; }
 .hinweis { font-size: .82rem; color: var(--grau); margin: 6px 0 0; }
 .hinweis.warnung { color: #8a5a05; background: #fdf3dc; padding: 8px 10px; border-radius: 8px; }
+
+/* Aufgaben: Termin und Wichtigkeit */
+.faellig { display: inline-block; font-size: .78rem; font-weight: 600; margin-top: 4px; color: var(--grau); }
+.faellig.heute { color: #8a5a05; }
+.faellig.ueber { color: var(--red); }
+.eintrag.ueberfaellig { border-left: 4px solid var(--red); padding-left: 9px; }
+.wichtig-stern { color: var(--yellow); font-size: 1.05rem; }
+.ankreuz { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: .95rem; }
+.ankreuz input { width: 22px; height: 22px; margin: 0; }
+
+/* Übergabe: was seit der letzten Schicht dazukam */
+.neu-eintrag { border-left: 4px solid var(--blue); padding-left: 9px; }
 .leer { color: var(--grau); text-align: center; padding: 20px 0; }
 
 label, .label { display: block; font-size: .85rem; color: #45525d; margin: 8px 0 4px; }
