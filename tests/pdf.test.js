@@ -89,6 +89,29 @@ module.exports = async function () {
   check("leere Anlage hängt keine Seite an", /\/Count 1\b/.test(ohneAnlage));
   check("Stand steht trotzdem im Fuß", ohneAnlage.indexOf("(Stand 1 vom 04.08.2026)") !== -1);
 
+  // --- Prüfkarten-Foto als eigene Seite ---
+  // 2x2 Pixel JPEG, reicht um Einbettung und Maße zu prüfen
+  const jpg = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsL"
+    + "DBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAACAAIBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==";
+  const mitKarte = erstmusterPdf(Object.assign({}, rezept, { pruefkarte: jpg, pruefkarte_am: "05.08.2026" }), "güntzel", "05.08.2026");
+  const mK = Buffer.from(mitKarte.teile[0]).toString("latin1");
+  check("Prüfkarte erzeugt eine eigene Seite", /\/Count 2\b/.test(mK));
+  check("Foto ist als JPEG eingebettet", mK.indexOf("/Filter/DCTDecode") !== -1 && mK.indexOf("/Subtype/Image") !== -1);
+  check("Seite verweist auf das Bild", mK.indexOf("/XObject<</Im0") !== -1 && mK.indexOf("/Im0 Do") !== -1);
+  check("Prüfkarten-Seite ist beschriftet", mK.indexOf("ANLAGE - PR\xdcFKARTE") !== -1);
+  check("Seitenzählung stimmt", mK.indexOf("(Seite 2 von 2)") !== -1);
+
+  const mitBeidem = Buffer.from(
+    erstmusterPdf(Object.assign({}, rezept, { pruefkarte: jpg }), "güntzel", "05.08.2026", anlage).teile[0]
+  ).toString("latin1");
+  check("Anlage und Prüfkarte ergeben drei Seiten", /\/Count 3\b/.test(mitBeidem));
+  check("Anlage bleibt Seite 2", mitBeidem.indexOf("(Seite 2 von 3)") !== -1);
+
+  const kaputt = Buffer.from(
+    erstmusterPdf(Object.assign({}, rezept, { pruefkarte: "data:image/jpeg;base64,keinbild" }), "güntzel", "05.08.2026").teile[0]
+  ).toString("latin1");
+  check("unlesbares Foto hängt keine Seite an", /\/Count 1\b/.test(kaputt));
+
   // unbekannte Formularkennung -> Standard statt Absturz
   const fallback = Buffer.from(erstmusterPdf({ formular: "gibtsnicht", soll: {} }).teile[0]).toString("latin1");
   check("unbekanntes Formular fällt auf 1350 zurück", fallback.indexOf("(WPD-013 1350)") !== -1);

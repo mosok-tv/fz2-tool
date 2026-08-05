@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "4.6";
+const APP_VERSION = "4.7";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -387,6 +387,23 @@ function merkeGesehen() {
   flash("Übergabe zur Kenntnis genommen."); render(); window.scrollTo(0, 0);
 }
 
+/* Passt eine gespeicherte Spulen-Berechnung zum laufenden Auftrag? Dann hier kurz zeigen. */
+function berechnungZuAuftrag(auftrag) {
+  const a = String(auftrag || "").trim().toLowerCase();
+  if (!a) return null;
+  const treffer = spulen().filter(s => String(s.auftrag || "").trim().toLowerCase() === a);
+  return treffer.length ? treffer[treffer.length - 1] : null;
+}
+function berechnungZumAuftrag(auftrag) {
+  const b = berechnungZuAuftrag(auftrag);
+  if (!b) return "";
+  return `<div class="lauf-auftrag">
+    <b>${fmt(b.anzahl_spulen, 0)} Spulen</b> à ${fmt(b.gewicht_je_spule)} kg / ${fmt(b.laenge_je_spule, 0)} m
+    ${b.geschwindigkeit ? " · je Spule " + hm(b.laenge_je_spule / b.geschwindigkeit) : ""}
+    <div class="meta">aus der Berechnung zu Auftrag ${esc(b.auftrag)}</div>
+  </div>`;
+}
+
 /* Kurzname des laufenden Drahts, z. B. „VSW 6×0,050" */
 function drahtName(l) { return [l.kuerzel, l.aufbau].filter(Boolean).join(" ") || l.klartext || "gerüstet"; }
 
@@ -436,6 +453,7 @@ function laufendHtml(m) {
       <div class="meta">${esc(formularName(l.formular))} · gerüstet ${esc(l.seit || "")}${l.benutzer ? " · " + esc(l.benutzer) : ""}</div>
       ${werte ? `<div class="lauf-werte">${werte}</div>` : ""}
       ${l.geprueft ? `<div class="meta">zuletzt geprüft ${esc(l.geprueft)}${l.geprueft_von ? " · " + esc(l.geprueft_von) : ""}</div>` : ""}
+      ${berechnungZumAuftrag(l.auftrag)}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
         <button class="btn btn-klein" data-kontrolle="${esc(m)}">Werte prüfen</button>
         ${vergleichbar ? `<button class="btn btn-klein btn-grau" data-rvergleich="${esc(l.rezept_id)}">Werte vergleichen</button>` : ""}
@@ -503,9 +521,12 @@ function spulenListeHtml() {
   const gefiltert = spulen().slice().reverse().filter(e => !q ||
     [e.auftrag, e.benutzer, e.created_at].join(" ").toLowerCase().indexOf(q) !== -1);
   if (!gefiltert.length) return `<div class="leer">${spulenSuche ? "Keine Berechnung gefunden." : "Noch keine Berechnung gespeichert."}</div>`;
+  const lauf = laufend();
   return gefiltert.map(e => `
     <div class="eintrag">
-      <div><b>${e.auftrag ? "Auftrag " + esc(e.auftrag) : "(ohne Auftragsnummer)"}</b></div>
+      <div><b>${e.auftrag ? "Auftrag " + esc(e.auftrag) : "(ohne Auftragsnummer)"}</b>
+        ${e.auftrag ? Object.keys(lauf).filter(m => String(lauf[m].auftrag || "").trim() === String(e.auftrag).trim())
+          .map(m => `<span class="em-badge ok">läuft auf ${esc(m)}</span>`).join("") : ""}</div>
       <div style="font-size:.92rem">${e.anzahl_vz} VZ ${e.modus === "kleinster" ? "(vom kleinsten)" : "(zusammen)"} = <b>${fmt(e.gesamtmasse)} kg</b> · Faktor ${fmt(e.faktor, 0)} %
         → Endgewicht <b>${fmt(e.endgewicht)} kg</b> / <b>${fmt(e.endlaenge_m, 0)} m</b><br>
         ${e.anzahl_spulen} Fertigspulen → je <b>${fmt(e.gewicht_je_spule)} kg</b> / <b>${fmt(e.laenge_je_spule, 0)} m</b>
@@ -826,6 +847,15 @@ function renderErstmusterDetail() {
     </div>` : ""}
     <div class="karte"><h2>Eingetragene Werte</h2>${werte}
       ${angaben.length ? `<p class="hinweis">Angaben wie Maschinentyp und KSS-Produkt stehen im PDF (${angaben.length} Stück).</p>` : ""}
+    </div>
+    <div class="karte"><h2>Prüfkarte</h2>
+      <p class="hinweis" style="margin-top:0">Das Formular verlangt die Prüfkarte als Beilage. Fotografiert geht sie als eigene Seite mit dem PDF raus.</p>
+      ${r.pruefkarte
+        ? `<img src="${r.pruefkarte}" alt="Prüfkarte" class="pk-bild">
+           <div class="meta">angehängt ${esc(r.pruefkarte_am || "")}${r.pruefkarte_von ? " · " + esc(r.pruefkarte_von) : ""}</div>
+           <button class="btn btn-klein btn-rot" data-pk-weg="${r.id}" style="margin-top:8px">Foto entfernen</button>`
+        : `<input type="file" id="pk-foto" accept="image/*" capture="environment">
+           <button class="btn btn-klein" data-pk-foto="${r.id}" style="margin-top:10px">Foto anhängen</button>`}
     </div>
     <div class="karte"><h2>Notlösungen</h2>
       <p class="hinweis" style="margin-top:0">Beim Rüsten anders gefahren, Sollwert blieb. Stehen auf Seite 2, bis das Erstmuster einmal versendet wurde.</p>
@@ -1464,11 +1494,51 @@ function merkeVersand(id, anlage) {
   render();
 }
 
+/* ---------- Suche über alles ---------- */
+let alleSuche = "";
+function sucheAlles(q) {
+  q = q.trim().toLowerCase();
+  if (q.length < 2) return null;
+  const passt = (...teile) => teile.filter(Boolean).join(" ").toLowerCase().indexOf(q) !== -1;
+  return {
+    erstmuster: rezepte().filter(r => passt(r.kuerzel, r.aufbau, r.klartext, r.maschine, r.beispiel_auftrag)),
+    spulen: spulen().filter(s => passt(s.auftrag, s.benutzer)),
+    aufgaben: todos().filter(t => passt(t.text, t.machine)),
+    notizen: entries().filter(e => passt(e.note, e.machine, e.benutzer)),
+    notloesungen: notloesungen().filter(n => passt(n.feld, n.grund, n.maschine)),
+  };
+}
+function sucheHtml() {
+  const t = sucheAlles(alleSuche);
+  if (!t) return `<div class="leer">Mindestens zwei Zeichen eingeben.</div>`;
+  const gesamt = Object.keys(t).reduce((n, k) => n + t[k].length, 0);
+  if (!gesamt) return `<div class="leer">Nichts gefunden.</div>`;
+  const block = (titel, eintraege, zeile) => eintraege.length
+    ? `<div class="such-gruppe">${titel} <span class="rz-fort">${eintraege.length}</span></div>${eintraege.slice(0, 8).map(zeile).join("")}`
+    : "";
+  return block("Erstmuster", t.erstmuster, r => `<div class="eintrag such-treffer" data-such-em="${r.id}">
+      <b>${esc(r.kuerzel)}</b> ${esc(r.aufbau)}<div class="meta">${esc(r.klartext || "")}${r.maschine ? " · " + esc(r.maschine) : ""}${r.beispiel_auftrag ? " · Auftrag " + esc(r.beispiel_auftrag) : ""}</div></div>`)
+    + block("Berechnungen", t.spulen, s => `<div class="eintrag such-treffer" data-such-spule="1">
+      <b>${s.auftrag ? "Auftrag " + esc(s.auftrag) : "Berechnung"}</b><div class="meta">${fmt(s.endgewicht)} kg · ${s.created_at}</div></div>`)
+    + block("Aufgaben", t.aufgaben, x => `<div class="eintrag such-treffer" data-such-aufgabe="1">
+      ${x.machine ? "<b>" + esc(x.machine) + ":</b> " : ""}${esc(x.text)}<div class="meta">${x.done ? "erledigt" : "offen"} · ${x.created_at}</div></div>`)
+    + block("Notizen", t.notizen, e => `<div class="eintrag such-treffer" data-such-maschine="${esc(e.machine)}">
+      <b>${esc(e.machine)}</b> ${esc(e.note || STATUS[e.status].label)}<div class="meta">${e.created_at}${e.benutzer ? " · " + esc(e.benutzer) : ""}</div></div>`)
+    + block("Notlösungen", t.notloesungen, n => `<div class="eintrag such-treffer" data-such-em="${n.rezept_id}">
+      <b>${esc(n.feld)}</b> Soll ${esc(n.soll)} · gefahren ${esc(n.ist)}<div class="meta">${n.maschine ? esc(n.maschine) + " · " : ""}${esc(n.datum)}</div></div>`);
+}
+
 /* ---------- Ansicht: Mehr / Sicherung ---------- */
 function renderMehr() {
   titel.textContent = "Mehr";
   const anz = { m: entries().length, a: todos().length, s: spulen().length };
   inhalt.innerHTML = `
+    <div class="karte">
+      <h2>Alles durchsuchen</h2>
+      <p class="hinweis" style="margin-top:0">Sucht in Erstmustern, Berechnungen, Aufgaben, Notizen und Notlösungen.</p>
+      <input type="text" id="alle-suche" placeholder="Auftrag, Kürzel, Maschine, Wort …" value="${esc(alleSuche)}">
+      <div id="such-ergebnis" style="margin-top:10px">${alleSuche ? sucheHtml() : ""}</div>
+    </div>
     <div class="karte">
       <h2>Datensicherung</h2>
       <p class="hinweis" style="margin-top:0">Gespeichert im Gerät: ${anz.m} Maschinen-Einträge, ${anz.a} Aufgaben, ${anz.s} Spulen-Berechnungen.</p>
@@ -1750,16 +1820,16 @@ function renderFehler() {
     </div>`;
 }
 
-function verkleinereFoto(file) {
+function verkleinereFoto(file, maxKante, guete) {
   return new Promise((resolve, reject) => {
     const img = new Image(), url = URL.createObjectURL(file);
     img.onload = () => {
-      const max = 1200; let w = img.width, h = img.height;
+      const max = maxKante || 1200; let w = img.width, h = img.height;
       if (w > max || h > max) { const s = max / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
       const c = document.createElement("canvas"); c.width = w; c.height = h;
       c.getContext("2d").drawImage(img, 0, 0, w, h);
       URL.revokeObjectURL(url);
-      try { resolve(c.toDataURL("image/jpeg", 0.7)); } catch (e) { reject(e); }
+      try { resolve(c.toDataURL("image/jpeg", guete || 0.7)); } catch (e) { reject(e); }
     };
     img.onerror = reject; img.src = url;
   });
@@ -1896,7 +1966,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt],[data-import-ersetzen],[data-pk-zurueck],[data-gesehen],[data-kontrolle],[data-kontrolle-zurueck],[data-kontrolle-speichern]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt],[data-import-ersetzen],[data-pk-zurueck],[data-gesehen],[data-kontrolle],[data-kontrolle-zurueck],[data-kontrolle-speichern],[data-pk-foto],[data-pk-weg],[data-such-em],[data-such-spule],[data-such-aufgabe],[data-such-maschine]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -2008,6 +2078,28 @@ document.addEventListener("click", e => {
     const lauf = laufend(); if (lauf[n]) { delete lauf[n]; DB.set("laufend", lauf); }
     flash("Maschine entfernt."); render();
   }
+  else if (el.dataset.pkFoto) {
+    const f = document.getElementById("pk-foto").files[0];
+    if (!f) return flash("Bitte zuerst ein Foto auswählen.");
+    // etwas größer und schärfer als beim Fehlerbild – auf der Prüfkarte steht Kleingedrucktes
+    verkleinereFoto(f, 1600, 0.72).then(dataUrl => {
+      const list = rezepte(), r = list.find(x => x.id === el.dataset.pkFoto);
+      if (!r) return;
+      r.pruefkarte = dataUrl; r.pruefkarte_am = jetzt(); r.pruefkarte_von = wer();
+      DB.set("rezepte", list);
+      flash("Prüfkarte angehängt."); render();
+    }).catch(() => flash("Foto konnte nicht gelesen werden."));
+  }
+  else if (el.dataset.pkWeg) {
+    if (!confirm("Foto der Prüfkarte entfernen?")) return;
+    const list = rezepte(), r = list.find(x => x.id === el.dataset.pkWeg);
+    if (r) { delete r.pruefkarte; delete r.pruefkarte_am; delete r.pruefkarte_von; DB.set("rezepte", list); }
+    flash("Foto entfernt."); render();
+  }
+  else if (el.dataset.suchEm) { zeige("erstmuster"); state.emDetail = el.dataset.suchEm; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.suchSpule) zeige("spulen");
+  else if (el.dataset.suchAufgabe) zeige("aufgaben");
+  else if (el.dataset.suchMaschine) { zeige("maschinen"); state.maschine = el.dataset.suchMaschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.gesehen) merkeGesehen();
   else if (el.dataset.kontrolle) { state.kontrolle = el.dataset.kontrolle; render(); window.scrollTo(0, 0); }
   else if (el.dataset.kontrolleZurueck) { state.kontrolle = null; render(); window.scrollTo(0, 0); }
@@ -2074,6 +2166,11 @@ document.addEventListener("input", e => {
     state.rvergleich[e.target.id === "rv-a" ? "a" : "b"] = e.target.value;
     render(); return;
   }
+  if (e.target.id === "alle-suche") {
+    alleSuche = e.target.value;
+    const z = document.getElementById("such-ergebnis"); if (z) z.innerHTML = alleSuche ? sucheHtml() : "";
+    return;
+  }
   if (e.target.id === "spulen-suche") { spulenSuche = e.target.value; const l = document.getElementById("spulen-liste"); if (l) l.innerHTML = spulenListeHtml(); return; }
   if (e.target.id === "ruest-suche") { ruestSuche = e.target.value; const l = document.getElementById("ruest-liste"); if (l) l.innerHTML = ruestListeHtml(); return; }
   if (e.target.id === "em-suche") { emSuche = e.target.value; const l = document.getElementById("em-liste"); if (l) l.innerHTML = emListeHtml(); return; }
@@ -2131,6 +2228,12 @@ function delSpule(id) {
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "4.7": [
+    "Prüfkarte fotografieren – geht als eigene Seite mit dem Erstmuster raus",
+    "Die laufende Maschine zeigt die Spulen-Berechnung zum Auftrag",
+    "Berechnungen zeigen, auf welcher Maschine der Auftrag läuft",
+    "Neu unter Mehr: eine Suche über alle Bereiche",
+  ],
   "4.6": [
     "Übergabe zeigt, was seit deiner letzten Schicht dazukam",
     "Einträge bekommen die Schicht (Früh/Spät/Nacht)",

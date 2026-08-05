@@ -6,6 +6,7 @@
 /* ---------- kleiner PDF-Schreiber (A4 hoch, Helvetica) ---------- */
 function PdfDoc() {
   this.seiten = [];      // je Seite ein Array von Anweisungen (Strings)
+  this.bilder = [];      // eingebettete JPEGs (Prüfkarten-Fotos)
   this.aktuell = null;
   this.neueSeite();
 }
@@ -50,6 +51,45 @@ PdfDoc.prototype.textGekuerzt = function (s, x, oben, groesse, maxB, fett) {
   this.text(t.replace(/…/g, "..."), x, oben, groesse, fett);
 };
 
+/* JPEG unverändert einbetten (DCTDecode) – Maße stehen im SOF-Abschnitt der Datei */
+function jpegMasse(bin) {
+  let i = 2;
+  while (i + 9 < bin.length) {
+    if (bin.charCodeAt(i) !== 0xFF) { i++; continue; }
+    const marker = bin.charCodeAt(i + 1);
+    const istSOF = marker >= 0xC0 && marker <= 0xCF && marker !== 0xC4 && marker !== 0xC8 && marker !== 0xCC;
+    if (istSOF) {
+      return { hoehe: (bin.charCodeAt(i + 5) << 8) | bin.charCodeAt(i + 6),
+               breite: (bin.charCodeAt(i + 7) << 8) | bin.charCodeAt(i + 8),
+               kanaele: bin.charCodeAt(i + 9) };
+    }
+    if (marker === 0xD8 || marker === 0x01 || (marker >= 0xD0 && marker <= 0xD7)) { i += 2; continue; }
+    i += 2 + ((bin.charCodeAt(i + 2) << 8) | bin.charCodeAt(i + 3));
+  }
+  return null;
+}
+// dataUrl: "data:image/jpeg;base64,..." -> gibt den Index des Bildes zurück (oder -1)
+PdfDoc.prototype.bildLaden = function (dataUrl) {
+  try {
+    const roh = String(dataUrl).split(",")[1];
+    if (!roh) return -1;
+    const bin = (typeof atob === "function") ? atob(roh) : Buffer.from(roh, "base64").toString("latin1");
+    const m = jpegMasse(bin);
+    if (!m || !m.breite || !m.hoehe) return -1;
+    this.bilder.push({ daten: bin, breite: m.breite, hoehe: m.hoehe, grau: m.kanaele === 1 });
+    return this.bilder.length - 1;
+  } catch (e) { return -1; }
+};
+// zeichnet das Bild in den Kasten (x, oben, b, h) und behält dabei die Seitenverhältnisse
+PdfDoc.prototype.bild = function (index, x, oben, maxB, maxH) {
+  const b = this.bilder[index];
+  if (!b) return;
+  const s = Math.min(maxB / b.breite, maxH / b.hoehe);
+  const bb = b.breite * s, hh = b.hoehe * s;
+  const px = x + (maxB - bb) / 2, po = oben + (maxH - hh) / 2;
+  this.aktuell.push(`q ${bb.toFixed(2)} 0 0 ${hh.toFixed(2)} ${px.toFixed(2)} ${y(po + hh).toFixed(2)} cm /Im${index} Do Q`);
+};
+
 PdfDoc.prototype.bauen = function () {
   const objekte = [];
   const seitenIds = this.seiten.map((_, i) => 4 + i * 2);   // Seite, dann Inhalt
@@ -57,14 +97,22 @@ PdfDoc.prototype.bauen = function () {
   objekte[2] = `<</Type/Pages/Kids[${seitenIds.map(id => id + " 0 R").join(" ")}]/Count ${this.seiten.length}>>`;
   objekte[3] = "<</Type/Font/Subtype/Type1/BaseFont/Helvetica/Encoding/WinAnsiEncoding>>";
   const fett = 3 + this.seiten.length * 2 + 1;
+  const bildStart = fett + 1;
+  const xobj = this.bilder.length
+    ? "/XObject<<" + this.bilder.map((_, i) => `/Im${i} ${bildStart + i} 0 R`).join("") + ">>" : "";
   this.seiten.forEach((inhalt, i) => {
     const seiteId = seitenIds[i], inhaltId = seiteId + 1;
     objekte[seiteId] = `<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${PdfDoc.SEITE_B} ${PdfDoc.SEITE_H}]`
-      + `/Resources<</Font<</F1 3 0 R/F2 ${fett} 0 R>>>>/Contents ${inhaltId} 0 R>>`;
+      + `/Resources<</Font<</F1 3 0 R/F2 ${fett} 0 R>>${xobj}>>/Contents ${inhaltId} 0 R>>`;
     const strom = inhalt.join("\n");
     objekte[inhaltId] = `<</Length ${strom.length}>>\nstream\n${strom}\nendstream`;
   });
   objekte[fett] = "<</Type/Font/Subtype/Type1/BaseFont/Helvetica-Bold/Encoding/WinAnsiEncoding>>";
+  this.bilder.forEach((b, i) => {
+    objekte[bildStart + i] = `<</Type/XObject/Subtype/Image/Width ${b.breite}/Height ${b.hoehe}`
+      + `/ColorSpace/Device${b.grau ? "Gray" : "RGB"}/BitsPerComponent 8/Filter/DCTDecode/Length ${b.daten.length}>>`
+      + `\nstream\n${b.daten}\nendstream`;
+  });
 
   let pdf = "%PDF-1.4\n";
   const positionen = [];
@@ -388,9 +436,12 @@ function erstmusterPdf(rezept, ersteller, datum, anlage) {
   const platz = PdfDoc.SEITE_H - RAND - kopfH - fussH - RAND;
   const proSeite = Math.floor(platz / ZH);
   const seiten = Math.max(1, Math.ceil(alle.length / proSeite));
-  const gesamt = seiten + (hatAnlage ? 1 : 0);
 
   const doc = new PdfDoc();
+  // Das Formular verlangt die Prüfkarte als Beilage – wenn eine fotografiert wurde, hängt sie hinten an
+  const karteIdx = rezept.pruefkarte ? doc.bildLaden(rezept.pruefkarte) : -1;
+  const hatKarte = karteIdx >= 0;
+  const gesamt = seiten + (hatAnlage ? 1 : 0) + (hatKarte ? 1 : 0);
   for (let s = 0; s < seiten; s++) {
     if (s > 0) doc.neueSeite();
     let o = kopfZeichnen(doc, form, rezept, s + 1, gesamt);
@@ -422,7 +473,17 @@ function erstmusterPdf(rezept, ersteller, datum, anlage) {
   }
   if (hatAnlage) {
     doc.neueSeite();
-    anlageZeichnen(doc, form, rezept, anlage, gesamt, gesamt, ersteller, datum);
+    anlageZeichnen(doc, form, rezept, anlage, seiten + 1, gesamt, ersteller, datum);
+  }
+  if (hatKarte) {
+    doc.neueSeite();
+    let o = kopfZeichnen(doc, form, rezept, gesamt, gesamt);
+    o += 8;
+    doc.text("ANLAGE - PRÜFKARTE", SP_NR, o + 8, 9.5, true);
+    o += 16;
+    doc.bild(karteIdx, RAND, o, BREITE, PdfDoc.SEITE_H - o - RAND - 14);
+    doc.text("Foto der Prüfkarte, aufgenommen in der App am " + (rezept.pruefkarte_am || "-"),
+      SP_NR, PdfDoc.SEITE_H - RAND - 4, 7);
   }
   return doc.bauen();
 }

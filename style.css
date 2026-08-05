@@ -90,6 +90,15 @@ body { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
 .ankreuz { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: .95rem; }
 .ankreuz input { width: 22px; height: 22px; margin: 0; }
 
+/* Suche über alles */
+.such-gruppe { font-size: .78rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--grau); margin: 14px 0 4px; }
+.such-treffer { cursor: pointer; }
+
+/* laufende Maschine: passende Spulen-Berechnung */
+.lauf-auftrag { margin-top: 10px; border-top: 1px solid var(--linie); padding-top: 8px; font-size: .9rem; }
+.pk-bild { display: block; width: 100%; border-radius: 8px; border: 1px solid var(--linie); margin-top: 6px; }
+
 /* Übergabe: was seit der letzten Schicht dazukam */
 .neu-eintrag { border-left: 4px solid var(--blue); padding-left: 9px; }
 .leer { color: var(--grau); text-align: center; padding: 20px 0; }

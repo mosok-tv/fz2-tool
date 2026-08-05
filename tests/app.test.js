@@ -134,7 +134,7 @@ module.exports = async function () {
     if (inp) setVal(inp, wert);
   };
   const weiter = () => d.querySelector("[data-wiz-weiter]").click();
-  stamm({ kuerzel: "VSW", aufbau: "6x0,050", klartext: "versilbert weich", maschine: "Z49" });
+  stamm({ kuerzel: "VSW", aufbau: "6x0,050", klartext: "versilbert weich", maschine: "Z49", beispiel_auftrag: "18034" });
   weiter(); weiter();                       // -> Ziehen
   wizWert("Ziehgeschwindigkeit", "18");
   weiter();                                 // -> Glühe
@@ -510,6 +510,35 @@ module.exports = async function () {
   check("Prüfzeitpunkt vermerkt", !!S("laufend").Z49.geprueft);
   check("Karte nennt die letzte Prüfung",
     d.querySelector(".karte.laufend").textContent.indexOf("zuletzt geprüft") !== -1);
+
+  // --- Auftrag verbindet Berechnung, Maschine und laufenden Draht ---
+  check("laufende Maschine zeigt die Berechnung zum Auftrag",
+    d.querySelector(".lauf-auftrag") !== null
+    && d.querySelector(".lauf-auftrag").textContent.indexOf("20 Spulen") !== -1);
+  tab("spulen");
+  check("Berechnung zeigt, auf welcher Maschine der Auftrag läuft",
+    d.getElementById("spulen-liste").innerHTML.indexOf("läuft auf Z49") !== -1);
+
+  // --- Suche über alles ---
+  tab("mehr");
+  setVal(d.getElementById("alle-suche"), "1");
+  check("zu kurze Suche wird abgefangen",
+    d.getElementById("such-ergebnis").textContent.indexOf("zwei Zeichen") !== -1);
+  setVal(d.getElementById("alle-suche"), "18034");
+  const treffer = d.getElementById("such-ergebnis");
+  check("Suche findet das Erstmuster", treffer.innerHTML.indexOf("VSW") !== -1);
+  check("Suche findet die Berechnung", treffer.textContent.indexOf("Auftrag 18034") !== -1);
+  setVal(d.getElementById("alle-suche"), "Ziehgeschwindigkeit");
+  check("Suche findet Notlösungen",
+    d.getElementById("such-ergebnis").textContent.indexOf("Notlösungen") !== -1);
+  setVal(d.getElementById("alle-suche"), "Riss an Kopf");
+  check("Suche findet Notizen", d.getElementById("such-ergebnis").textContent.indexOf("Notizen") !== -1);
+  d.querySelector("[data-such-maschine]").click();
+  check("Treffer springt zur Maschine", d.getElementById("kopf-titel").textContent === "Z49");
+  tab("mehr");
+  setVal(d.getElementById("alle-suche"), "gibtsnichtxyz");
+  check("Suche ohne Treffer sagt das",
+    d.getElementById("such-ergebnis").textContent.indexOf("Nichts gefunden") !== -1);
 
   return check.ergebnis();
 };
