@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "4.7";
+const APP_VERSION = "4.8";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -1595,8 +1595,13 @@ function renderMehr() {
     <div class="karte">
       <h2>Verschlüsselung &amp; Code</h2>
       ${VAULT_CODE
-        ? `<p class="hinweis" style="margin-top:0">✓ Die Daten sind <b>verschlüsselt</b>. Beim Öffnen muss der Code eingegeben werden – ohne ihn sind die Daten nicht lesbar.</p>
-           <button class="btn btn-grau" data-code-aendern="1">Code ändern</button>
+        ? `<p class="hinweis" style="margin-top:0">✓ Die Daten sind <b>verschlüsselt</b> – ohne den Code sind sie nicht lesbar.</p>
+           <button class="btn ${codeGemerkt() ? "btn-grau" : ""}" data-code-fragen="1">
+             Beim Öffnen nach dem Code fragen: ${codeGemerkt() ? "AUS" : "AN"}</button>
+           <p class="hinweis${codeGemerkt() ? " warnung" : ""}">${codeGemerkt()
+             ? "Die App öffnet sich sofort. Der Code liegt dafür im Gerät – wer das entsperrte Gerät in der Hand hat, sieht alle Erstmuster. Es schützt dann nur noch der Code des Geräts."
+             : "Der Code wird bei jedem Öffnen abgefragt."}</p>
+           <button class="btn btn-grau" data-code-aendern="1" style="margin-top:8px">Code ändern</button>
            <button class="btn btn-grau btn-klein" data-code-entfernen="1" style="margin-top:8px">Verschlüsselung entfernen</button>`
         : `<p class="hinweis warnung" style="margin-top:0">Die Daten liegen aktuell <b>unverschlüsselt</b> auf dem Gerät. Wer das entsperrte Handy in die Hand bekommt, liest alle Erstmuster mit. Mit einem Code werden sie verschlüsselt.</p>
            <input type="password" id="code-neu" inputmode="numeric" maxlength="12" placeholder="Code festlegen (Zahlen)">
@@ -1635,11 +1640,25 @@ async function codeAendern() {
   if (code.length < 4) return flash("Bitte mindestens 4 Zeichen.");
   VAULT_CODE = code;
   localStorage.setItem("sue_vault_enc", JSON.stringify(await verschluessle(VAULT, code)));
+  if (codeGemerkt()) merkeCode(code);   // sonst sperrt sich die App beim nächsten Start aus
   flash("Code geändert.");
+}
+/* Schalter: fragt die App beim Öffnen nach dem Code oder nicht */
+function codeFragenUmschalten() {
+  if (codeGemerkt()) {
+    vergissCode();
+    flash("Der Code wird beim Öffnen wieder abgefragt.");
+  } else {
+    if (!confirm("Beim Öffnen nicht mehr nach dem Code fragen?\n\nDer Code wird dafür im Gerät gespeichert. Wer das entsperrte Gerät in die Hand bekommt, sieht dann alle Erstmuster – geschützt bist du nur noch durch den Code des Geräts selbst.")) return;
+    merkeCode(VAULT_CODE);
+    flash("Die App öffnet sich künftig ohne Code.");
+  }
+  render();
 }
 async function codeEntfernen() {
   if (!confirm("Verschlüsselung entfernen? Die Daten liegen dann unverschlüsselt auf dem Gerät.")) return;
   VAULT_CODE = null;
+  vergissCode();
   localStorage.removeItem("sue_vault_enc");
   localStorage.setItem("sue_vault", JSON.stringify(VAULT));
   pruefeHinweisBanner();
@@ -1966,7 +1985,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt],[data-import-ersetzen],[data-pk-zurueck],[data-gesehen],[data-kontrolle],[data-kontrolle-zurueck],[data-kontrolle-speichern],[data-pk-foto],[data-pk-weg],[data-such-em],[data-such-spule],[data-such-aufgabe],[data-such-maschine]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-code-fragen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt],[data-import-ersetzen],[data-pk-zurueck],[data-gesehen],[data-kontrolle],[data-kontrolle-zurueck],[data-kontrolle-speichern],[data-pk-foto],[data-pk-weg],[data-such-em],[data-such-spule],[data-such-aufgabe],[data-such-maschine]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -2131,6 +2150,7 @@ document.addEventListener("click", e => {
   }
   else if (el.dataset.codeSetzen) codeSetzen();
   else if (el.dataset.codeAendern) codeAendern();
+  else if (el.dataset.codeFragen) codeFragenUmschalten();
   else if (el.dataset.codeEntfernen) codeEntfernen();
   else if (el.dataset.fehlerZurueck) { state.overlay = null; render(); window.scrollTo(0, 0); }
   else if (el.dataset.fehlerSenden) sendeFehlerbericht();
@@ -2228,6 +2248,9 @@ function delSpule(id) {
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "4.8": [
+    "Der Code muss nicht mehr bei jedem Öffnen eingegeben werden – Schalter unter Mehr",
+  ],
   "4.7": [
     "Prüfkarte fotografieren – geht als eigene Seite mit dem Erstmuster raus",
     "Die laufende Maschine zeigt die Spulen-Berechnung zum Auftrag",
@@ -2460,6 +2483,14 @@ if ("serviceWorker" in navigator) {
 }
 
 /* ---------- Zugangssperre ---------- */
+/* Code merken: die App entsperrt sich beim Start selbst. Dafür liegt der Code im
+   Gerät – geschützt ist die App ab da nur noch durch den Code des Geräts selbst.
+   Bewusst so gewollt; der Tresor bleibt verschlüsselt, der Schalter lässt sich
+   jederzeit wieder umlegen, ohne den Code neu zu setzen. */
+function codeGemerkt() { return localStorage.getItem("dz_code_gemerkt"); }
+function merkeCode(code) { localStorage.setItem("dz_code_gemerkt", code); }
+function vergissCode() { localStorage.removeItem("dz_code_gemerkt"); }
+
 async function pinHash(code) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("fz2-salt:" + code));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
@@ -2571,6 +2602,8 @@ async function entsperren() {
       raeumeAltePlainKeys();
     }
     localStorage.removeItem("dz_sperre_fehl"); localStorage.removeItem("dz_sperre_bis");
+    const merken = document.getElementById("sperre-merken");
+    if (merken && merken.checked) merkeCode(code);
     document.getElementById("sperre").hidden = true;
     document.getElementById("sperre-code").value = "";
     document.getElementById("sperre-fehler").textContent = "";
@@ -2591,10 +2624,19 @@ async function entsperren() {
     }
   }
 }
-function pruefeSperre() {
+async function pruefeSperre() {
   const enc = localStorage.getItem("sue_vault_enc");
   const plain = ladePlainVault();
   if (enc || plain.pin_hash) {
+    const gemerkt = enc && codeGemerkt();
+    if (gemerkt) {
+      try {
+        VAULT = await entschluessle(JSON.parse(enc), gemerkt);
+        VAULT_CODE = gemerkt; vaultBereit = true;
+        starteApp();
+        return;
+      } catch (e) { vergissCode(); }   // Code passt nicht mehr – dann doch fragen
+    }
     document.getElementById("sperre").hidden = false;
     document.getElementById("sperre-code").focus();
     zeigeSperrWartezeit();

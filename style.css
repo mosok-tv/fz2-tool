@@ -64,6 +64,9 @@ body { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
   border: none; border-radius: 10px; margin-bottom: 10px; }
 #sperre-fehler { color: #ff9a9a; font-size: .88rem; min-height: 20px; margin: 0 0 8px; }
 #sperre .btn { background: var(--blau); }
+.sperre-merken { display: flex; align-items: center; gap: 8px; justify-content: center;
+  color: rgba(255,255,255,.75); font-size: .85rem; margin-bottom: 12px; }
+.sperre-merken input { width: 18px; height: 18px; }
 #login { position: fixed; inset: 0; z-index: 99; background: var(--dunkel);
   display: flex; align-items: center; justify-content: center; padding: 24px; }
 #login[hidden] { display: none; }

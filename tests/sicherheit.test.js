@@ -100,6 +100,43 @@ module.exports = async function () {
   check("nach der Wartezeit entsperrt der richtige Code", d.getElementById("sperre").hidden === true);
   check("Zähler nach Erfolg zurückgesetzt", !w.localStorage.getItem("dz_sperre_fehl"));
 
+  // --- Code merken: die App entsperrt sich beim Start selbst ---
+  w = starteApp(null, verschluesselt); d = w.document;
+  await warte(60);
+  check("Sperrbildschirm hat den Merken-Haken", !!d.getElementById("sperre-merken"));
+  d.getElementById("sperre-merken").checked = true;
+  d.getElementById("sperre-code").value = "1234";
+  d.getElementById("sperre-ok").click();
+  await warteBis(() => d.getElementById("sperre").hidden === true);
+  check("Code wird gemerkt", w.localStorage.getItem("dz_code_gemerkt") === "1234");
+  const gemerkt = lsDump(w);
+  check("Daten bleiben trotzdem verschlüsselt", !!gemerkt["sue_vault_enc"] && !gemerkt["sue_vault"]);
+
+  w = starteApp(null, gemerkt); d = w.document;
+  await warteBis(() => d.getElementById("sperre").hidden === true);
+  check("Neustart: kein Sperrbildschirm mehr", d.getElementById("sperre").hidden === true);
+  await login(w);
+  check("Neustart: Daten sind da", d.getElementById("inhalt").innerHTML.indexOf("GEHEIM Kopf 3") !== -1);
+
+  // Schalter unter Mehr legt die Abfrage wieder an
+  d.querySelector('.tab[data-view="mehr"]').click();
+  check("Schalter zeigt AUS", d.querySelector("[data-code-fragen]").textContent.indexOf("AUS") !== -1);
+  d.querySelector("[data-code-fragen]").click();
+  await warte(60);
+  check("Schalter löscht den gemerkten Code", !w.localStorage.getItem("dz_code_gemerkt"));
+  check("Schalter zeigt wieder AN", d.querySelector("[data-code-fragen]").textContent.indexOf("AN") !== -1);
+  const wiederFragen = lsDump(w);
+  w = starteApp(null, wiederFragen); d = w.document;
+  await warte(80);
+  check("danach fragt der Start wieder nach dem Code", d.getElementById("sperre").hidden === false);
+
+  // passt der gemerkte Code nicht mehr, wird trotzdem gefragt statt abgestürzt
+  const falschGemerkt = Object.assign({}, gemerkt, { dz_code_gemerkt: "0000" });
+  w = starteApp(null, falschGemerkt); d = w.document;
+  await warte(150);
+  check("falscher gemerkter Code führt zurück zur Abfrage", d.getElementById("sperre").hidden === false);
+  check("falscher gemerkter Code wird verworfen", !w.localStorage.getItem("dz_code_gemerkt"));
+
   // --- Anmeldung ---
   w = starteApp({ benutzer: [{ name: "friedl", pw: "x" }], angemeldet: "" }); d = w.document;
   await warte(120);
