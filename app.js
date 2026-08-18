@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "4.8";
+const APP_VERSION = "4.9";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -848,6 +848,11 @@ function renderErstmusterDetail() {
     <div class="karte"><h2>Eingetragene Werte</h2>${werte}
       ${angaben.length ? `<p class="hinweis">Angaben wie Maschinentyp und KSS-Produkt stehen im PDF (${angaben.length} Stück).</p>` : ""}
     </div>
+    ${r.blatt ? `<div class="karte"><h2>Blatt vom Papier</h2>
+      <p class="hinweis" style="margin-top:0">Vorlage zum Nachschlagen. Geht nicht mit dem Erstmuster raus – das PDF wird aus den Werten oben gebaut.</p>
+      <img src="${r.blatt}" alt="Blatt" class="pk-bild">
+      <div class="meta">fotografiert ${esc(r.blatt_am || "")}${r.blatt_von ? " · " + esc(r.blatt_von) : ""}</div>
+    </div>` : ""}
     <div class="karte"><h2>Prüfkarte</h2>
       <p class="hinweis" style="margin-top:0">Das Formular verlangt die Prüfkarte als Beilage. Fotografiert geht sie als eigene Seite mit dem PDF raus.</p>
       ${r.pruefkarte
@@ -869,16 +874,141 @@ function renderErstmusterDetail() {
     </div>`;
 }
 
+/* ---------- Vom Blatt übernehmen ----------
+   Das Erkennen macht das Gerät selbst: Foto in der Fotos-App öffnen, Text
+   markieren, kopieren. Die App bekommt nur den fertigen Text und ordnet ihn den
+   Feldern des Formulars zu – nichts geht dafür nach außen, und übernommen wird
+   nur, was der Nutzer bestätigt. Der erkannte Text ist unsauber (Handschrift,
+   fehlende Umlaute, verrutschte Zeilen), deshalb wird verglichen, wie viele
+   Wörter eines Feldnamens in einer Zeile vorkommen. */
+const BLATT_FUELL = ["und", "der", "die", "das", "von", "auf", "fur", "im", "in", "bzw"];
+const BLATT_STAMM = { kuerzel: "Kurzbezeichnung", aufbau: "Aufbau", klartext: "Klartext",
+                      maschine: "Maschine", beispiel_auftrag: "Auftrag" };
+
+// Kleinschreibung ohne Umlaute; Komma und Punkt bleiben, sonst zerfallen Zahlen wie 1,15
+function blattNorm(s) {
+  return String(s == null ? "" : s).toLowerCase()
+    .replace(/ä/g, "a").replace(/ö/g, "o").replace(/ü/g, "u").replace(/ß/g, "ss")
+    .replace(/[^a-z0-9,.]+/g, " ").replace(/\s+/g, " ").trim();
+}
+// Die Wörter eines Feldnamens, an denen eine Zeile erkannt wird
+function blattWorte(name) {
+  return blattNorm(name).split(" ").filter(w => w && BLATT_FUELL.indexOf(w) === -1 && (w.length >= 3 || /^\d+$/.test(w)));
+}
+// Zahlen zählen nur als ganzes Wort (sonst steckt die "1" aus "KSS-Ventil 1" in jeder 1,15)
+function blattEnthaelt(zeile, wort) {
+  return /^\d+$/.test(wort) ? zeile.split(" ").indexOf(wort) !== -1 : zeile.indexOf(wort) !== -1;
+}
+// Zeile ohne den Feldnamen – nur das erste Vorkommen je Wort, damit "Verlegung Hand/Automatik: Automatik" den Wert behält
+function blattRest(zeile, name) {
+  let n = blattNorm(zeile);
+  blattWorte(name).forEach(w => {
+    const i = n.indexOf(w);
+    if (i !== -1) n = n.slice(0, i) + " " + n.slice(i + w.length);
+  });
+  return n.replace(/\s+/g, " ").trim();
+}
+function blattZahl(s) {
+  const m = String(s).match(/\d+(?:[.,]\d+)?/g);
+  return m ? m[m.length - 1].replace(".", ",") : null;
+}
+// Wert einer Zeile: erst die bekannten Vorschläge (Hand/Automatik/Kupfer…), dann die Zahl
+function blattWert(zeile, feld) {
+  const rest = blattRest(zeile, feld.name);
+  if (!rest) return null;
+  const treffer = (feld.vorschlaege || []).find(v => blattNorm(v) && rest.indexOf(blattNorm(v)) !== -1);
+  if (treffer) return treffer;
+  return blattZahl(rest);
+}
+// Kurzbezeichnung, Aufbau, Klartext, Maschine, Auftrag aus dem ganzen Text
+function blattStamm(zeilen) {
+  const roh = zeilen.join("\n"), n = " " + blattNorm(roh) + " ", gefunden = {};
+  const m = maschinen().find(x => blattNorm(x) && n.indexOf(" " + blattNorm(x) + " ") !== -1);
+  if (m) gefunden.maschine = m;
+  const a = roh.match(/(\d{1,3})\s*[x×*]\s*(\d+[.,]\d+)/);
+  if (a) {
+    gefunden.aufbau = a[1] + "x" + a[2].replace(".", ",");
+    // In der Produktzeile steht davor die Kurzbezeichnung, dahinter der Klartext
+    const zeile = zeilen.find(z => z.indexOf(a[0]) !== -1) || "";
+    const teile = zeile.split(a[0]);
+    const vor = (teile[0] || "").trim().split(/\s+/).filter(Boolean);
+    const kurz = vor[vor.length - 1];
+    if (kurz && /^[A-ZÄÖÜ0-9-]{2,8}$/.test(kurz)) gefunden.kuerzel = kurz;
+    const nach = (teile[1] || "").replace(/^[\s:.-]+/, "").trim();
+    if (nach && /[a-zäöü]{3}/.test(nach) && nach.length <= 40) gefunden.klartext = nach;
+  }
+  const auf = roh.match(/auftrag\D{0,15}(\d{4,8})/i);
+  if (auf) gefunden.beispiel_auftrag = auf[1];
+  return gefunden;
+}
+
+/* Ordnet den Text den Feldern zu. Liefert Treffer zum Bestätigen und die Zeilen,
+   mit denen die App nichts anfangen konnte – damit nichts still verloren geht. */
+function leseBlatt(text, formularId, werte, stamm) {
+  const zeilen = String(text == null ? "" : text).split(/\r?\n/).map(z => z.trim()).filter(Boolean);
+  const felder = formularFelder(formularId).map(f => {
+    const worte = blattWorte(f.name);
+    return { feld: f, worte: worte, langes: worte.some(w => w.length >= 5) };
+  });
+  const besteZeile = {};        // Feldname -> { wert, punkte, zeilen: [Index] }
+  const benutzt = {};
+  zeilen.forEach((z, i) => {
+    const n = blattNorm(z);
+    let best = null;
+    felder.forEach(k => {
+      if (!k.worte.length) return;
+      const treffend = k.worte.filter(w => blattEnthaelt(n, w));
+      if (!treffend.length) return;
+      const punkte = treffend.length / k.worte.length;
+      // Ein langes Wort muss dabei sein, sonst passt jede Zeile auf jedes Feld
+      if (punkte < 0.6 || (k.langes && !treffend.some(w => w.length >= 5))) return;
+      if (!best || punkte > best.punkte) best = { feld: k.feld, punkte: punkte };
+    });
+    if (!best) return;
+    let wert = blattWert(z, best.feld), quelle = [i];
+    // Steht der Wert allein in der nächsten Zeile, gehört er trotzdem dazu
+    if (!wert && zeilen[i + 1] && /^[\d.,\s]+$/.test(zeilen[i + 1])) {
+      wert = blattZahl(zeilen[i + 1]);
+      if (wert) quelle = [i, i + 1];
+    }
+    if (!wert) return;
+    const alt = besteZeile[best.feld.name];
+    if (alt && alt.punkte >= best.punkte) return;
+    besteZeile[best.feld.name] = { wert: wert, punkte: best.punkte, zeilen: quelle };
+    quelle.forEach(x => { benutzt[x] = 1; });
+  });
+
+  const treffer = [];
+  const st = blattStamm(zeilen);
+  // Zeilen, aus denen die Stammdaten stammen, gelten ebenfalls als zugeordnet
+  zeilen.forEach((z, i) => {
+    const n = blattNorm(z);
+    if (Object.keys(st).some(k => blattNorm(st[k]) && n.indexOf(blattNorm(st[k])) !== -1)) benutzt[i] = 1;
+  });
+  Object.keys(BLATT_STAMM).forEach(k => {
+    if (!st[k]) return;
+    treffer.push({ art: "stamm", schluessel: k, label: BLATT_STAMM[k], einheit: "",
+                   wert: st[k], alt: ((stamm || {})[k] || "") });
+  });
+  formularFelder(formularId).forEach(f => {
+    const t = besteZeile[f.name];
+    if (!t) return;
+    treffer.push({ art: "feld", schluessel: f.name, label: f.name, einheit: f.einheit || "",
+                   wert: t.wert, alt: ((werte || {})[f.name] || "") });
+  });
+  return { treffer: treffer, rest: zeilen.filter((z, i) => !benutzt[i]) };
+}
+
 /* Assistent zum Anlegen/Ändern eines Musters – Schritt für Schritt, Werte antippen statt tippen */
-let wiz = null;   // { phase: "start"|"vorlage"|"schritte", schritt, werte:{}, stamm:{} }
+let wiz = null;   // { phase: "start"|"vorlage"|"blatt"|"schritte", schritt, werte:{}, stamm:{} }
 
 function wizStart(id) {
   if (id === "neu") {
-    wiz = { phase: "start", schritt: 0, werte: {}, stamm: {}, formular: STANDARD_FORMULAR };
+    wiz = { phase: "start", schritt: 0, werte: {}, stamm: {}, formular: STANDARD_FORMULAR, blatt: "" };
   } else {
     const r = rezepte().find(x => x.id === id) || {};
     wiz = { phase: "schritte", schritt: 0, werte: Object.assign({}, r.soll || {}),
-      formular: r.formular || STANDARD_FORMULAR,
+      formular: r.formular || STANDARD_FORMULAR, blatt: r.blatt || "",
       stamm: { kuerzel: r.kuerzel || "", aufbau: r.aufbau || "", klartext: r.klartext || "",
                maschine: r.maschine || "", beispiel_auftrag: r.beispiel_auftrag || "" } };
   }
@@ -888,6 +1018,7 @@ function renderRezeptForm() {
   if (!wiz) wizStart(state.rezeptForm);
   if (wiz.phase === "start") return renderWizStart();
   if (wiz.phase === "vorlage") return renderWizVorlage();
+  if (wiz.phase === "blatt") return renderWizBlatt();
   return renderWizSchritt();
 }
 
@@ -900,9 +1031,61 @@ function renderWizStart() {
       <h2>Wie möchtest du anfangen?</h2>
       ${gibtVorlagen ? `<button class="grossbtn" data-wiz-vorlage="1">Wie ein vorhandenes Muster
         <small>Alles wird übernommen – du änderst nur, was anders ist.</small></button>` : ""}
+      <button class="grossbtn" data-wiz-blatt="1">Vom Blatt abfotografieren
+        <small>Foto vom Papier – die App trägt die erkannten Werte ein.</small></button>
       <button class="grossbtn" data-wiz-leer="1">Ganz neu anlegen
         <small>${gibtVorlagen ? "Nur nötig, wenn es nichts Ähnliches gibt." : "Das erste Muster anlegen."}</small></button>
     </div>`;
+}
+
+/* Foto vom Papier-Blatt und der davon erkannte Text */
+function renderWizBlatt() {
+  titel.textContent = "Vom Blatt übernehmen";
+  const erg = wiz.blattErg;
+  const trefferHtml = !erg ? "" : (erg.treffer.length
+    ? erg.treffer.map((t, i) => `<label class="bl-zeile">
+        <input type="checkbox" class="bl-an" data-i="${i}" checked>
+        <span class="bl-feld">
+          <span class="bl-name">${esc(t.label)}${t.einheit ? ` <span class="weinheit">(${esc(t.einheit)})</span>` : ""}
+            ${t.alt && t.alt !== t.wert ? `<span class="meta">bisher ${esc(t.alt)}</span>` : ""}</span>
+          <input type="text" class="bl-wert" data-i="${i}" value="${esc(t.wert)}">
+        </span>
+      </label>`).join("")
+    : `<div class="leer">Aus diesem Text ließ sich nichts zuordnen. Prüfe, ob wirklich der Text vom Blatt eingefügt wurde.</div>`);
+
+  inhalt.innerHTML = `
+    <button class="btn btn-grau btn-klein" data-wiz-blatt-zurueck="1">‹ Zurück</button>
+    <div class="karte" style="margin-top:12px">
+      <h2>1. Blatt fotografieren</h2>
+      <p class="hinweis" style="margin-top:0">Das Foto bleibt beim Muster – du hast das Blatt dann in jedem Schritt daneben.</p>
+      ${wiz.blatt
+        ? `<img src="${wiz.blatt}" alt="Blatt" class="blatt-bild gross">
+           <button class="btn btn-klein btn-rot" data-blatt-weg="1" style="margin-top:8px">Foto entfernen</button>`
+        : `<input type="file" id="blatt-foto" accept="image/*" capture="environment">
+           <button class="btn btn-klein" data-blatt-foto="1" style="margin-top:10px">Foto übernehmen</button>`}
+    </div>
+    <div class="karte">
+      <h2>2. Text vom Blatt einfügen</h2>
+      <p class="hinweis" style="margin-top:0">Foto in der Fotos-App öffnen, den Text im Bild markieren, kopieren – und hier einfügen.
+        Erkennen macht das Gerät selbst, es geht nichts nach außen. Bei Handschrift klappt es nur, wenn sie sauber ist – der Rest wird getippt.</p>
+      <textarea id="blatt-text" rows="6" placeholder="Text hier einfügen">${esc(wiz.blattText || "")}</textarea>
+      <button class="btn" data-blatt-lesen="1" style="margin-top:8px">Werte heraussuchen</button>
+    </div>
+    ${erg ? `<div class="karte">
+      <h2>${erg.treffer.length} ${erg.treffer.length === 1 ? "Wert" : "Werte"} gefunden</h2>
+      <p class="hinweis" style="margin-top:0">Nichts wird übernommen, was du nicht bestätigst. Haken weg = weglassen, Wert kannst du gleich richtigstellen.</p>
+      ${trefferHtml}
+      ${erg.treffer.length ? `<button class="btn btn-gruen" data-blatt-uebernehmen="1" style="margin-top:12px">Übernehmen und durchgehen</button>` : ""}
+    </div>` : ""}
+    ${erg && erg.rest.length ? `<div class="karte">
+      <h2>Nicht zugeordnet</h2>
+      <p class="hinweis" style="margin-top:0">Diese Zeilen passten zu keinem Feld. Was davon gebraucht wird, trägst du in den Schritten von Hand ein.</p>
+      <div class="bl-rest">${erg.rest.map(z => esc(z)).join("<br>")}</div>
+    </div>` : ""}
+    ${!erg ? `<div class="karte">
+      <p class="hinweis" style="margin-top:0">Ohne Text geht es auch: weiter zu den Schritten und alles antippen.</p>
+      <button class="btn btn-grau" data-blatt-ohne="1">Weiter ohne Text</button>
+    </div>` : ""}`;
 }
 
 function renderWizVorlage() {
@@ -962,7 +1145,19 @@ function renderWizSchritt() {
   }
 
   const letzter = (s === gesamt - 1);
+  // Das fotografierte Blatt bleibt in jedem Schritt oben stehen
+  const blattKarte = wiz.blatt
+    ? `<div class="karte blatt-karte">
+         <img src="${wiz.blatt}" alt="Blatt" class="blatt-bild ${wiz.blattGross ? "gross" : ""}" data-blatt-gross="1">
+         <div class="blatt-zeile"><span class="meta">Blatt vom Papier · antippen zum Vergrößern</span>
+           <button class="btn btn-klein btn-grau" data-wiz-blatt="1">Text übernehmen</button></div>
+       </div>`
+    : `<div class="karte blatt-karte">
+         <div class="blatt-zeile"><span class="meta">Werte stehen auf Papier?</span>
+           <button class="btn btn-klein btn-grau" data-wiz-blatt="1">Vom Blatt abfotografieren</button></div>
+       </div>`;
   inhalt.innerHTML = `
+    ${blattKarte}
     <div class="karte">
       ${kopf}
       <h2>${esc(gruppenName)}</h2>
@@ -979,6 +1174,28 @@ function wizWeiter() {
   if (wiz.schritt < gesamt - 1) { wiz.schritt++; render(); window.scrollTo(0, 0); }
   else speichereRezept();
 }
+/* Übernimmt nur die angehakten Zeilen – und danach geht es durch alle Schritte,
+   damit jeder Wert noch einmal vor Augen kommt. */
+function blattUebernehmen() {
+  const erg = wiz.blattErg;
+  if (!erg) return;
+  let n = 0;
+  erg.treffer.forEach((t, i) => {
+    const an = document.querySelector('.bl-an[data-i="' + i + '"]');
+    if (!an || !an.checked) return;
+    const feld = document.querySelector('.bl-wert[data-i="' + i + '"]');
+    const wert = String(feld ? feld.value : t.wert).trim();
+    if (!wert) return;
+    if (t.art === "stamm") wiz.stamm[t.schluessel] = wert;
+    else wiz.werte[t.schluessel] = wert;
+    n++;
+  });
+  wiz.blattErg = null; wiz.blattText = "";
+  wiz.phase = "schritte"; wiz.schritt = 0;
+  flash(n === 1 ? "1 Wert übernommen – bitte durchgehen." : n + " Werte übernommen – bitte durchgehen.");
+  render(); window.scrollTo(0, 0);
+}
+
 function wizZurueck() {
   if (wiz.schritt > 0) { wiz.schritt--; render(); window.scrollTo(0, 0); }
   else if (state.rezeptForm === "neu") { wiz.phase = "start"; render(); window.scrollTo(0, 0); }
@@ -1379,9 +1596,17 @@ function speichereRezept() {
         Object.assign(r, daten);
         r.geaendert_am = jetzt(); r.geaendert_von = wer();
       }
+      // Das Blattfoto steht nicht in der Historie, muss aber auch allein gespeichert werden
+      if ((wiz.blatt || "") !== (r.blatt || "")) {
+        if (wiz.blatt) { r.blatt = wiz.blatt; r.blatt_am = jetzt(); r.blatt_von = wer(); }
+        else { delete r.blatt; delete r.blatt_am; delete r.blatt_von; }
+        r.geaendert_am = jetzt(); r.geaendert_von = wer();
+      }
     }
   } else {
-    list.push({ id: neueId(), ...daten, ruest_status: {}, historie: [], benutzer: wer(), created_at: jetzt(), geaendert_am: jetzt() });
+    const neu = { id: neueId(), ...daten, ruest_status: {}, historie: [], benutzer: wer(), created_at: jetzt(), geaendert_am: jetzt() };
+    if (wiz.blatt) { neu.blatt = wiz.blatt; neu.blatt_am = jetzt(); neu.blatt_von = wer(); }
+    list.push(neu);
   }
   DB.set("rezepte", list);
   state.rezeptForm = null; wiz = null;
@@ -1985,7 +2210,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-code-fragen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt],[data-import-ersetzen],[data-pk-zurueck],[data-gesehen],[data-kontrolle],[data-kontrolle-zurueck],[data-kontrolle-speichern],[data-pk-foto],[data-pk-weg],[data-such-em],[data-such-spule],[data-such-aufgabe],[data-such-maschine]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-blatt],[data-wiz-blatt-zurueck],[data-blatt-foto],[data-blatt-weg],[data-blatt-gross],[data-blatt-lesen],[data-blatt-uebernehmen],[data-blatt-ohne],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-code-fragen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt],[data-import-ersetzen],[data-pk-zurueck],[data-gesehen],[data-kontrolle],[data-kontrolle-zurueck],[data-kontrolle-speichern],[data-pk-foto],[data-pk-weg],[data-such-em],[data-such-spule],[data-such-aufgabe],[data-such-maschine]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -2021,6 +2246,26 @@ document.addEventListener("click", e => {
     }
     wiz.phase = "schritte"; wiz.schritt = 0; render(); window.scrollTo(0, 0);
   }
+  else if (el.dataset.wizBlatt) { wiz.vorBlatt = wiz.phase; wiz.phase = "blatt"; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.wizBlattZurueck) { wiz.phase = wiz.vorBlatt || "start"; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.blattOhne) { wiz.phase = "schritte"; wiz.schritt = 0; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.blattFoto) {
+    const f = document.getElementById("blatt-foto").files[0];
+    if (!f) return flash("Bitte zuerst ein Foto auswählen.");
+    verkleinereFoto(f, 1600, 0.72).then(dataUrl => {
+      wiz.blatt = dataUrl; flash("Foto übernommen."); render();
+    }).catch(() => flash("Foto konnte nicht gelesen werden."));
+  }
+  else if (el.dataset.blattWeg) { wiz.blatt = ""; render(); }
+  else if (el.dataset.blattGross) { wiz.blattGross = !wiz.blattGross; render(); }
+  else if (el.dataset.blattLesen) {
+    const t = (document.getElementById("blatt-text").value || "").trim();
+    if (!t) return flash("Bitte zuerst den Text einfügen.");
+    wiz.blattText = t;
+    wiz.blattErg = leseBlatt(t, wiz.formular, wiz.werte, wiz.stamm);
+    render(); window.scrollTo(0, 0);
+  }
+  else if (el.dataset.blattUebernehmen) blattUebernehmen();
   else if (el.dataset.formular) { wiz.formular = el.dataset.formular; render(); }
   else if (el.dataset.wizWeiter) wizWeiter();
   else if (el.dataset.wizZurueck) wizZurueck();
@@ -2248,6 +2493,10 @@ function delSpule(id) {
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "4.9": [
+    "Erstmuster vom Papier: Blatt fotografieren – das Foto bleibt beim Muster",
+    "Erkannten Text vom Blatt einfügen – die App trägt die Werte zum Bestätigen ein",
+  ],
   "4.8": [
     "Der Code muss nicht mehr bei jedem Öffnen eingegeben werden – Schalter unter Mehr",
   ],

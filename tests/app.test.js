@@ -448,6 +448,55 @@ module.exports = async function () {
   check("Checkliste zeigt Einstellwert (Verlegung)", namen.indexOf("Verlegung Hand/Automatik") !== -1);
   check("Checkliste zeigt keine Angaben (KSS-Produkt)", namen.indexOf("KSS-Produkt Glühe") === -1);
 
+  // --- Vom Blatt: erkannter Text wird den Feldern zugeordnet ---
+  tab("erstmuster");
+  d.querySelector("[data-rezept-neu]").click();
+  check("Start bietet das Blatt an", d.querySelector("[data-wiz-blatt]") !== null);
+  d.querySelector("[data-wiz-blatt]").click();
+  check("Blatt-Seite hat Foto und Textfeld",
+    d.getElementById("blatt-foto") !== null && d.getElementById("blatt-text") !== null);
+  // so unsauber, wie die Texterkennung vom Papier liefert
+  setVal(d.getElementById("blatt-text"), [
+    "Erstmusterprüfung Feinzug 2",
+    "BLT 6x0,050 versilbert weich",
+    "Maschine Z49",
+    "Auftrag 18034",
+    "Ziehgeschwindigkeit 16",
+    "Glühfaktor 1,15",
+    "Glühspannung",
+    "22",
+    "KSS-Ventil 2 45",
+    "Verlegung Hand/Automatik: Automatik",
+    "Spulengröße 350",
+    "gez. Müller 12.08.",
+  ].join("\n"));
+  d.querySelector("[data-blatt-lesen]").click();
+  const blZeile = name => Array.from(d.querySelectorAll(".bl-zeile"))
+    .find(z => z.querySelector(".bl-name").textContent.trim().indexOf(name) === 0);
+  const blWert = name => { const z = blZeile(name); return z ? z.querySelector(".bl-wert").value : null; };
+  check("Blatt: Kurzbezeichnung und Aufbau erkannt", blWert("Kurzbezeichnung") === "BLT" && blWert("Aufbau") === "6x0,050");
+  check("Blatt: Maschine und Auftrag erkannt", blWert("Maschine") === "Z49" && blWert("Auftrag") === "18034");
+  check("Blatt: Zahlenwerte erkannt", blWert("Ziehgeschwindigkeit") === "16" && blWert("Glühfaktor") === "1,15");
+  check("Blatt: Wert in der nächsten Zeile gehört dazu", blWert("Glühspannung") === "22");
+  check("Blatt: KSS-Ventil 2 trifft nicht KSS-Ventil 1", blWert("KSS-Ventil 2") === "45" && blZeile("KSS-Ventil 1") == null);
+  check("Blatt: Auswahlwert statt Zahl", blWert("Verlegung Hand/Automatik") === "Automatik");
+  check("Blatt: nichts wird ohne Haken übernommen",
+    Array.from(d.querySelectorAll(".bl-an")).every(a => a.checked));
+  check("Blatt: unpassende Zeile geht nicht verloren",
+    d.querySelector(".bl-rest").textContent.indexOf("Müller") !== -1);
+  // Spulengröße abwählen: sie darf dann nicht im Muster landen
+  blZeile("Spulengröße").querySelector(".bl-an").checked = false;
+  d.querySelector("[data-blatt-uebernehmen]").click();
+  check("Blatt: Übernehmen führt in die Schritte", d.querySelectorAll(".wpunkt").length === 5);
+  check("Blatt: Stammdaten stehen im Schritt", d.querySelector('.wiz-stamm[data-stamm="kuerzel"]').value === "BLT");
+  weiter(); weiter(); weiter(); weiter(); weiter();
+  const blt = S("rezepte").find(r => r.kuerzel === "BLT");
+  check("Blatt: Muster gespeichert", !!blt && blt.aufbau === "6x0,050" && blt.maschine === "Z49");
+  check("Blatt: Werte gespeichert",
+    blt.soll["Ziehgeschwindigkeit"] === "16" && blt.soll["Glühfaktor"] === "1,15" && blt.soll["KSS-Ventil 2"] === "45");
+  check("Blatt: Abgewähltes bleibt leer", !blt.soll["Spulengröße"]);
+  check("Blatt: Auftrag übernommen", blt.beispiel_auftrag === "18034");
+
   // --- Erstmuster senden: Knopf sitzt im Erstmuster-Bereich ---
   tab("erstmuster");
   d.querySelector("[data-em]").click();
