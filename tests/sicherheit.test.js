@@ -223,6 +223,29 @@ module.exports = async function () {
   check("echtes Foto wird weiterhin angezeigt",
     d.querySelector(".pk-bild").getAttribute("src") === "data:image/jpeg;base64,AAAA");
 
+  // --- Voller Gerätespeicher darf nicht stillschweigend Daten verschlucken ---
+  // Sonst steht "gespeichert" auf dem Schirm und beim nächsten Start ist die Schicht weg.
+  w = starteApp(); d = w.document;
+  await login(w);
+  await warte(120);
+  let gewarnt = "";
+  w.alert = t => { gewarnt = String(t); };
+  const echtesSetItem = w.Storage.prototype.setItem;
+  w.Storage.prototype.setItem = function (k, v) {
+    if (k === "sue_vault") { const e = new Error("voll"); e.name = "QuotaExceededError"; throw e; }
+    return echtesSetItem.call(this, k, v);
+  };
+  d.querySelector('[data-maschine="Z49"]').click();
+  await warte(60);
+  d.querySelector('[data-status="drahtriss"]').click();
+  d.getElementById("notiz").value = "Speicher voll Test";
+  d.querySelector("[data-speichern-eintrag]").click();
+  await warte(150);
+  w.Storage.prototype.setItem = echtesSetItem;
+  check("voller Speicher wird dem Nutzer gemeldet", gewarnt.indexOf("NICHT gespeichert") !== -1);
+  d.querySelector('.tab[data-view="maschinen"]').click();
+  await warte(80);
+  check("App läuft nach vollem Speicher weiter", d.querySelector(".kopf-kachel") !== null);
 
   return check.ergebnis();
 };

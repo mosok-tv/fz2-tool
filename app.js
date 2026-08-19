@@ -56,6 +56,15 @@ async function entschluessle(paket, code) {
   return JSON.parse(new TextDecoder().decode(dec));  // wirft bei falschem Code
 }
 let persistTimer = null;
+/* Ist der Gerätespeicher voll, schlägt das Schreiben fehl. Das darf nicht stillschweigend
+   passieren: sonst steht "gespeichert" auf dem Schirm und beim nächsten Start ist die
+   Schicht weg. Darum laut melden – der Nutzer kann dann sichern und aufräumen. */
+function speicherVoll(e) {
+  console.error("Speichern fehlgeschlagen", e);
+  alert("ACHTUNG: Die Daten konnten NICHT gespeichert werden – der Speicher des Geräts ist voll.\n\n"
+    + "Bitte unter „Mehr“ eine Sicherung exportieren und alte Erstmuster-Fotos löschen. "
+    + "Bis dahin geht alles Neue beim Schließen der App verloren.");
+}
 function persistiereVault() {
   if (!vaultBereit) return;  // niemals vor dem Laden speichern
   if (VAULT_CODE) {
@@ -63,10 +72,11 @@ function persistiereVault() {
     persistTimer = setTimeout(() => {
       verschluessle(VAULT, VAULT_CODE)
         .then(p => localStorage.setItem("sue_vault_enc", JSON.stringify(p)))
-        .then(() => {});
+        .catch(speicherVoll);
     }, 60);
   } else {
-    localStorage.setItem("sue_vault", JSON.stringify(VAULT));
+    try { localStorage.setItem("sue_vault", JSON.stringify(VAULT)); }
+    catch (e) { speicherVoll(e); }
   }
 }
 function ladePlainVault() {
@@ -1885,10 +1895,13 @@ function codeFragenUmschalten() {
 }
 async function codeEntfernen() {
   if (!confirm("Verschlüsselung entfernen? Die Daten liegen dann unverschlüsselt auf dem Gerät.")) return;
+  // Erst die unverschlüsselte Fassung schreiben, dann die verschlüsselte löschen –
+  // ist der Speicher voll, wären sonst beide weg.
+  try { localStorage.setItem("sue_vault", JSON.stringify(VAULT)); }
+  catch (e) { return speicherVoll(e); }
   VAULT_CODE = null;
   vergissCode();
   localStorage.removeItem("sue_vault_enc");
-  localStorage.setItem("sue_vault", JSON.stringify(VAULT));
   pruefeHinweisBanner();
   flash("Verschlüsselung entfernt."); render();
 }
@@ -2528,6 +2541,7 @@ function delSpule(id) {
 const CHANGELOG = {
   "4.12": [
     "Sicherheit: Namen und Bilder aus einer eingelesenen Sicherungsdatei können keinen fremden Code mehr in die App bringen",
+    "Ist der Speicher des Geräts voll, sagt die App das jetzt deutlich, statt still nichts zu speichern",
   ],
   "4.11": [
     "Die zwei Foto-Knöpfe bei Blatt und Prüfkarte gingen nicht – jetzt öffnen sie Kamera bzw. Fotoauswahl",
