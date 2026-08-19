@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "4.9";
+const APP_VERSION = "4.10";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -859,8 +859,7 @@ function renderErstmusterDetail() {
         ? `<img src="${r.pruefkarte}" alt="Prüfkarte" class="pk-bild">
            <div class="meta">angehängt ${esc(r.pruefkarte_am || "")}${r.pruefkarte_von ? " · " + esc(r.pruefkarte_von) : ""}</div>
            <button class="btn btn-klein btn-rot" data-pk-weg="${r.id}" style="margin-top:8px">Foto entfernen</button>`
-        : `<input type="file" id="pk-foto" accept="image/*" capture="environment">
-           <button class="btn btn-klein" data-pk-foto="${r.id}" style="margin-top:10px">Foto anhängen</button>`}
+        : fotoWahl("pk", `data-id="${r.id}"`)}
     </div>
     <div class="karte"><h2>Notlösungen</h2>
       <p class="hinweis" style="margin-top:0">Beim Rüsten anders gefahren, Sollwert blieb. Stehen auf Seite 2, bis das Erstmuster einmal versendet wurde.</p>
@@ -1056,13 +1055,12 @@ function renderWizBlatt() {
   inhalt.innerHTML = `
     <button class="btn btn-grau btn-klein" data-wiz-blatt-zurueck="1">‹ Zurück</button>
     <div class="karte" style="margin-top:12px">
-      <h2>1. Blatt fotografieren</h2>
+      <h2>1. Foto vom Blatt</h2>
       <p class="hinweis" style="margin-top:0">Das Foto bleibt beim Muster – du hast das Blatt dann in jedem Schritt daneben.</p>
       ${wiz.blatt
         ? `<img src="${wiz.blatt}" alt="Blatt" class="blatt-bild gross">
            <button class="btn btn-klein btn-rot" data-blatt-weg="1" style="margin-top:8px">Foto entfernen</button>`
-        : `<input type="file" id="blatt-foto" accept="image/*" capture="environment">
-           <button class="btn btn-klein" data-blatt-foto="1" style="margin-top:10px">Foto übernehmen</button>`}
+        : fotoWahl("blatt")}
     </div>
     <div class="karte">
       <h2>2. Text vom Blatt einfügen</h2>
@@ -2064,6 +2062,20 @@ function renderFehler() {
     </div>`;
 }
 
+/* Zwei Wege zum Bild: frisch fotografieren oder eines nehmen, das schon auf dem Handy liegt.
+   Aussuchen macht das Betriebssystem in seinem eigenen Fenster – die App bekommt nur das eine
+   gewählte Bild, nie einen Zugriff auf die Fotomediathek. */
+function fotoWahl(ziel, extra) {
+  const zu = extra || "";
+  return `<input type="file" class="fotoweg" id="foto-${ziel}-kamera" data-foto-ziel="${ziel}" accept="image/*" capture="environment" ${zu}>
+    <input type="file" class="fotoweg" id="foto-${ziel}-datei" data-foto-ziel="${ziel}" accept="image/*" ${zu}>
+    <div class="fotowahl">
+      <button class="btn btn-klein" data-foto-quelle="foto-${ziel}-kamera">Jetzt fotografieren</button>
+      <button class="btn btn-klein btn-grau" data-foto-quelle="foto-${ziel}-datei">Vom Handy wählen</button>
+    </div>
+    <p class="hinweis">Die App bekommt nur das eine Bild, das du aussuchst – auf deine Fotos hat sie keinen Zugriff.</p>`;
+}
+
 function verkleinereFoto(file, maxKante, guete) {
   return new Promise((resolve, reject) => {
     const img = new Image(), url = URL.createObjectURL(file);
@@ -2249,12 +2261,9 @@ document.addEventListener("click", e => {
   else if (el.dataset.wizBlatt) { wiz.vorBlatt = wiz.phase; wiz.phase = "blatt"; render(); window.scrollTo(0, 0); }
   else if (el.dataset.wizBlattZurueck) { wiz.phase = wiz.vorBlatt || "start"; render(); window.scrollTo(0, 0); }
   else if (el.dataset.blattOhne) { wiz.phase = "schritte"; wiz.schritt = 0; render(); window.scrollTo(0, 0); }
-  else if (el.dataset.blattFoto) {
-    const f = document.getElementById("blatt-foto").files[0];
-    if (!f) return flash("Bitte zuerst ein Foto auswählen.");
-    verkleinereFoto(f, 1600, 0.72).then(dataUrl => {
-      wiz.blatt = dataUrl; flash("Foto übernommen."); render();
-    }).catch(() => flash("Foto konnte nicht gelesen werden."));
+  else if (el.dataset.fotoQuelle) {
+    const i = document.getElementById(el.dataset.fotoQuelle);
+    if (i) i.click();  // öffnet Kamera bzw. Auswahlfenster des Handys
   }
   else if (el.dataset.blattWeg) { wiz.blatt = ""; render(); }
   else if (el.dataset.blattGross) { wiz.blattGross = !wiz.blattGross; render(); }
@@ -2341,18 +2350,6 @@ document.addEventListener("click", e => {
     DB.set("maschinen", maschinen().filter(m => m !== n));
     const lauf = laufend(); if (lauf[n]) { delete lauf[n]; DB.set("laufend", lauf); }
     flash("Maschine entfernt."); render();
-  }
-  else if (el.dataset.pkFoto) {
-    const f = document.getElementById("pk-foto").files[0];
-    if (!f) return flash("Bitte zuerst ein Foto auswählen.");
-    // etwas größer und schärfer als beim Fehlerbild – auf der Prüfkarte steht Kleingedrucktes
-    verkleinereFoto(f, 1600, 0.72).then(dataUrl => {
-      const list = rezepte(), r = list.find(x => x.id === el.dataset.pkFoto);
-      if (!r) return;
-      r.pruefkarte = dataUrl; r.pruefkarte_am = jetzt(); r.pruefkarte_von = wer();
-      DB.set("rezepte", list);
-      flash("Prüfkarte angehängt."); render();
-    }).catch(() => flash("Foto konnte nicht gelesen werden."));
   }
   else if (el.dataset.pkWeg) {
     if (!confirm("Foto der Prüfkarte entfernen?")) return;
@@ -2452,6 +2449,30 @@ document.addEventListener("input", e => {
   if (!state.overlay && e.target.closest("#inhalt") && state.view === "spulen") spRechne();
 });
 
+// Bild ist ausgesucht (egal ob Kamera oder Fotos-App) – gleich übernehmen, ohne zweiten Knopf
+document.addEventListener("change", e => {
+  const el = e.target;
+  if (!el.dataset || !el.dataset.fotoZiel) return;
+  const f = el.files && el.files[0];
+  el.value = "";  // damit dasselbe Bild später wieder gewählt werden kann
+  if (!f) return;
+  const ziel = el.dataset.fotoZiel, id = el.dataset.id;
+  // etwas größer und schärfer als beim Fehlerbild – auf Blatt und Prüfkarte steht Kleingedrucktes
+  verkleinereFoto(f, 1600, 0.72).then(dataUrl => {
+    if (ziel === "blatt") {
+      if (!wiz) return;
+      wiz.blatt = dataUrl; flash("Foto übernommen.");
+    } else {
+      const list = rezepte(), r = list.find(x => x.id === id);
+      if (!r) return;
+      r.pruefkarte = dataUrl; r.pruefkarte_am = jetzt(); r.pruefkarte_von = wer();
+      DB.set("rezepte", list);
+      flash("Prüfkarte angehängt.");
+    }
+    render();
+  }).catch(() => flash("Foto konnte nicht gelesen werden."));
+});
+
 function gewaehlterStatus() { const a = document.querySelector(".status-opt.aktiv"); return a ? a.dataset.status : null; }
 function speichereEintrag() {
   const st = gewaehlterStatus();
@@ -2493,6 +2514,10 @@ function delSpule(id) {
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "4.10": [
+    "Blatt und Prüfkarte: Foto neu aufnehmen oder eines nehmen, das schon auf dem Handy liegt",
+    "Bild wird sofort übernommen – der zweite Knopf entfällt",
+  ],
   "4.9": [
     "Erstmuster vom Papier: Blatt fotografieren – das Foto bleibt beim Muster",
     "Erkannten Text vom Blatt einfügen – die App trägt die Werte zum Bestätigen ein",

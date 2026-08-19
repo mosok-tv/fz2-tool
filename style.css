@@ -119,6 +119,11 @@ body { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
 .bl-wert { width: 100%; margin-top: 4px; padding: 8px 10px; font-weight: 700; }
 .bl-rest { margin-top: 8px; font-size: .9rem; color: var(--grau); line-height: 1.5; }
 
+/* Bild holen: die Dateifelder bleiben unsichtbar, geöffnet werden sie über die zwei Knöpfe */
+.fotoweg { display: none; }
+.fotowahl { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.fotowahl .btn { flex: 1 1 140px; }
+
 /* Übergabe: was seit der letzten Schicht dazukam */
 .neu-eintrag { border-left: 4px solid var(--blue); padding-left: 9px; }
 .leer { color: var(--grau); text-align: center; padding: 20px 0; }

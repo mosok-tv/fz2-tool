@@ -454,7 +454,15 @@ module.exports = async function () {
   check("Start bietet das Blatt an", d.querySelector("[data-wiz-blatt]") !== null);
   d.querySelector("[data-wiz-blatt]").click();
   check("Blatt-Seite hat Foto und Textfeld",
-    d.getElementById("blatt-foto") !== null && d.getElementById("blatt-text") !== null);
+    d.getElementById("foto-blatt-kamera") !== null && d.getElementById("blatt-text") !== null);
+  // Bild darf auch aus der Fotos-App kommen: dieses Feld zwingt nicht zur Kamera
+  check("Blatt: Foto vom Handy ist wählbar",
+    d.getElementById("foto-blatt-datei") !== null &&
+    !d.getElementById("foto-blatt-datei").hasAttribute("capture") &&
+    d.getElementById("foto-blatt-kamera").getAttribute("capture") === "environment");
+  check("Blatt: beide Knöpfe zeigen auf ihr Feld",
+    d.querySelector('[data-foto-quelle="foto-blatt-kamera"]') !== null &&
+    d.querySelector('[data-foto-quelle="foto-blatt-datei"]') !== null);
   // so unsauber, wie die Texterkennung vom Papier liefert
   setVal(d.getElementById("blatt-text"), [
     "Erstmusterprüfung Feinzug 2",
@@ -502,6 +510,10 @@ module.exports = async function () {
   d.querySelector("[data-em]").click();
   const senden = d.querySelector("[data-erstmuster]");
   check("Knopf 'Erstmuster senden' in der Erstmuster-Ansicht", senden !== null && senden.textContent.indexOf("Erstmuster") !== -1);
+  check("Prüfkarte: Kamera und Foto vom Handy stehen zur Wahl",
+    d.getElementById("foto-pk-kamera") !== null &&
+    !d.getElementById("foto-pk-datei").hasAttribute("capture") &&
+    d.getElementById("foto-pk-datei").dataset.id === d.getElementById("foto-pk-kamera").dataset.id);
   let geteilt = null;
   w.navigator.canShare = () => true;
   w.navigator.share = o => { geteilt = o; return Promise.resolve(); };
