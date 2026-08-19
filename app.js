@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "4.11";
+const APP_VERSION = "4.12";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -61,7 +61,9 @@ function persistiereVault() {
   if (VAULT_CODE) {
     clearTimeout(persistTimer);
     persistTimer = setTimeout(() => {
-      verschluessle(VAULT, VAULT_CODE).then(p => localStorage.setItem("sue_vault_enc", JSON.stringify(p))).catch(() => {});
+      verschluessle(VAULT, VAULT_CODE)
+        .then(p => localStorage.setItem("sue_vault_enc", JSON.stringify(p)))
+        .then(() => {});
     }, 60);
   } else {
     localStorage.setItem("sue_vault", JSON.stringify(VAULT));
@@ -247,6 +249,9 @@ function jetzt() {
   return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+/* Bildquelle nur durchlassen, wenn es wirklich ein eingebettetes Bild ist.
+   Aus einer fremden Sicherungsdatei könnte sonst statt eines Fotos Schadcode kommen. */
+function bildQuelle(s) { return /^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]*$/.test(String(s || "")) ? s : ""; }
 function zahl(s) {
   if (s == null) return 0;
   s = String(s).trim().replace(/\s/g, ""); if (s === "") return 0;
@@ -341,7 +346,7 @@ function renderMaschinen() {
     const txt = e ? STATUS[e.status].label : "kein Eintrag";
     const l = lauf[m];
     const draht = l ? `<small class="kachel-draht">${esc(drahtName(l))}</small>` : "";
-    return `<button class="kopf-kachel bg-${farbe}" data-maschine="${m}">${esc(m)}<small>${esc(txt)}</small>${draht}</button>`;
+    return `<button class="kopf-kachel bg-${farbe}" data-maschine="${esc(m)}">${esc(m)}<small>${esc(txt)}</small>${draht}</button>`;
   }).join("");
   if (!liste.length) kacheln = `<div class="leer" style="grid-column:1/-1">Noch keine Maschine angelegt – unter „Mehr" hinzufügen.</div>`;
 
@@ -409,7 +414,7 @@ function drahtName(l) { return [l.kuerzel, l.aufbau].filter(Boolean).join(" ") |
 
 function renderMaschineDetail() {
   const m = state.maschine;
-  titel.innerHTML = `${m}`;
+  titel.textContent = m;
   const hist = entries().filter(e => e.machine === m).slice().reverse();
   let histHtml = hist.length
     ? hist.map(e => `<div class="eintrag"><span class="punkt d-${STATUS[e.status].farbe}"></span><span class="stat">${STATUS[e.status].label}</span>${e.note ? " – " + esc(e.note) : ""}<div class="meta">${e.created_at}${e.schicht ? " · " + schichtLabel(e.schicht) : ""}${e.benutzer ? " · " + esc(e.benutzer) : ""}</div></div>`).join("")
@@ -427,7 +432,7 @@ function renderMaschineDetail() {
       <div class="status-wahl">${optionen}</div>
       <div class="label">Schicht</div>
       <select id="eintrag-schicht">${SCHICHTEN.map(s =>
-        `<option value="${s.id}"${s.id === schichtJetzt() ? " selected" : ""}>${s.label}</option>`).join("")}</select>
+        `<option value="${esc(s.id)}"${s.id === schichtJetzt() ? " selected" : ""}>${s.label}</option>`).join("")}</select>
       <div class="label">Notiz (optional)</div>
       <textarea id="notiz" placeholder="z. B. Drahtriss an Kopf 3"></textarea>
       <button class="btn" data-speichern-eintrag="1" style="margin-top:12px">Eintrag speichern</button>
@@ -491,8 +496,8 @@ function renderAufgaben() {
       <div class="${t.done ? "durchgestrichen" : ""}">${t.wichtig && !t.done ? '<span class="wichtig-stern">★</span> ' : ""}${t.machine ? "<b>" + esc(t.machine) + ":</b> " : ""}${esc(t.text)}</div>
       ${!t.done ? faelligText(t) : ""}
       <div class="meta">${t.created_at}${t.benutzer ? " · " + esc(t.benutzer) : ""}${t.done && t.done_at ? " · ✓ erledigt " + t.done_at + (t.done_von ? " von " + esc(t.done_von) : "") : ""}</div>
-      <button class="btn btn-klein ${t.done ? "btn-grau" : ""}" data-toggle-todo="${t.id}" style="margin-top:6px">${t.done ? "wieder offen" : "✓ erledigt"}</button>
-      <button class="btn btn-klein btn-rot" data-del-todo="${t.id}" style="margin-top:6px;margin-left:6px">Löschen</button>
+      <button class="btn btn-klein ${t.done ? "btn-grau" : ""}" data-toggle-todo="${esc(t.id)}" style="margin-top:6px">${t.done ? "wieder offen" : "✓ erledigt"}</button>
+      <button class="btn btn-klein btn-rot" data-del-todo="${esc(t.id)}" style="margin-top:6px;margin-left:6px">Löschen</button>
     </div>`).join("") : `<div class="leer">Nichts offen. 🎉</div>`;
 
   const maschinenOpts = maschinen().map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join("");
@@ -536,8 +541,8 @@ function spulenListeHtml() {
         ${e.endgewicht >= e.auftragsmenge ? "✓ reicht" : "✕ reicht nicht"} für ${fmt(e.auftragsmenge)} kg Auftrag
         (${e.endgewicht >= e.auftragsmenge ? "Reserve" : "fehlen"} ${fmt(Math.abs(e.endgewicht - e.auftragsmenge))} kg)</div>` : ""}
       <div class="meta">G = ${fmt(e.metergewicht, 4)} kg/km${e.abzug_je_vz ? " · Abzug " + fmt(e.abzug_je_vz, 0) + " kg/VZ" : ""} · ${e.created_at}${e.benutzer ? " · " + esc(e.benutzer) : ""}</div>
-      <button class="btn btn-klein" data-edit-spule="${e.id}" style="margin-top:6px">Bearbeiten</button>
-      <button class="btn btn-klein btn-rot" data-del-spule="${e.id}" style="margin-top:6px;margin-left:6px">Löschen</button>
+      <button class="btn btn-klein" data-edit-spule="${esc(e.id)}" style="margin-top:6px">Bearbeiten</button>
+      <button class="btn btn-klein btn-rot" data-del-spule="${esc(e.id)}" style="margin-top:6px;margin-left:6px">Löschen</button>
     </div>`).join("");
 }
 
@@ -765,7 +770,7 @@ function ruestListeHtml() {
     const ok = Object.values(status).filter(s => s && s.erledigt).length;
     const badge = ok > 0 ? `<span class="rz-fort">${ok}/${g} gerüstet</span>` : "";
     const vers = (r.historie && r.historie.length) ? `<span class="rz-vers">${r.historie.length + 1} Stände</span>` : "";
-    return `<div class="eintrag rz-eintrag" data-rezept="${r.id}">
+    return `<div class="eintrag rz-eintrag" data-rezept="${esc(r.id)}">
       <div><b>${esc(r.kuerzel)}</b> · ${esc(r.aufbau)} ${badge} ${vers}</div>
       <div class="meta">${esc(r.klartext || "")}${r.maschine ? " · " + esc(r.maschine) : ""}${r.beispiel_auftrag ? " · Auftrag " + esc(r.beispiel_auftrag) : ""} · ${esc(formularName(r.formular))}</div>
     </div>`;
@@ -796,7 +801,7 @@ function emListeHtml() {
     [r.kuerzel, r.aufbau, r.klartext, r.maschine, r.beispiel_auftrag].join(" ").toLowerCase().indexOf(q) !== -1);
   if (!rz.length) return `<div class="leer">${emSuche ? "Kein Erstmuster gefunden." : "Noch kein Erstmuster angelegt."}</div>`;
   return rz.map(r => {
-    return `<div class="eintrag rz-eintrag" data-em="${r.id}">
+    return `<div class="eintrag rz-eintrag" data-em="${esc(r.id)}">
       <div><b>${esc(r.kuerzel)}</b> · ${esc(r.aufbau)} ${versandBadge(r)}</div>
       <div class="meta">${esc(r.klartext || "")}${r.maschine ? " · " + esc(r.maschine) : ""}${r.beispiel_auftrag ? " · Auftrag " + esc(r.beispiel_auftrag) : ""} · ${esc(formularName(r.formular))}</div>
     </div>`;
@@ -829,7 +834,7 @@ function renderErstmusterDetail() {
       <div style="font-size:.92rem">Soll <span class="alt-wert">${esc(n.soll)}</span> · gefahren <b>${esc(n.ist)}</b></div>
       ${n.grund ? `<div style="font-size:.9rem">${esc(n.grund)}</div>` : `<div class="meta">kein Grund angegeben</div>`}
       <div class="meta">${n.maschine ? esc(n.maschine) + " · " : ""}${esc(n.datum)}${n.benutzer ? " · " + esc(n.benutzer) : ""}</div>
-      <button class="btn btn-klein btn-grau" data-nl-erledigt="${n.id}" style="margin-top:6px">Erledigt – nicht mehr melden</button>
+      <button class="btn btn-klein btn-grau" data-nl-erledigt="${esc(n.id)}" style="margin-top:6px">Erledigt – nicht mehr melden</button>
     </div>`).join("") : `<div class="leer">Keine offenen Notlösungen.</div>`;
 
   inhalt.innerHTML = `
@@ -850,26 +855,26 @@ function renderErstmusterDetail() {
     </div>
     ${r.blatt ? `<div class="karte"><h2>Blatt vom Papier</h2>
       <p class="hinweis" style="margin-top:0">Vorlage zum Nachschlagen. Geht nicht mit dem Erstmuster raus – das PDF wird aus den Werten oben gebaut.</p>
-      <img src="${r.blatt}" alt="Blatt" class="pk-bild">
+      <img src="${bildQuelle(r.blatt)}" alt="Blatt" class="pk-bild">
       <div class="meta">fotografiert ${esc(r.blatt_am || "")}${r.blatt_von ? " · " + esc(r.blatt_von) : ""}</div>
     </div>` : ""}
     <div class="karte"><h2>Prüfkarte</h2>
       <p class="hinweis" style="margin-top:0">Das Formular verlangt die Prüfkarte als Beilage. Fotografiert geht sie als eigene Seite mit dem PDF raus.</p>
       ${r.pruefkarte
-        ? `<img src="${r.pruefkarte}" alt="Prüfkarte" class="pk-bild">
+        ? `<img src="${bildQuelle(r.pruefkarte)}" alt="Prüfkarte" class="pk-bild">
            <div class="meta">angehängt ${esc(r.pruefkarte_am || "")}${r.pruefkarte_von ? " · " + esc(r.pruefkarte_von) : ""}</div>
-           <button class="btn btn-klein btn-rot" data-pk-weg="${r.id}" style="margin-top:8px">Foto entfernen</button>`
-        : fotoWahl("pk", `data-id="${r.id}"`)}
+           <button class="btn btn-klein btn-rot" data-pk-weg="${esc(r.id)}" style="margin-top:8px">Foto entfernen</button>`
+        : fotoWahl("pk", `data-id="${esc(r.id)}"`)}
     </div>
     <div class="karte"><h2>Notlösungen</h2>
       <p class="hinweis" style="margin-top:0">Beim Rüsten anders gefahren, Sollwert blieb. Stehen auf Seite 2, bis das Erstmuster einmal versendet wurde.</p>
       ${nlHtml}
     </div>
     <div class="karte" style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-klein" data-rezept-bearbeiten="${r.id}">Bearbeiten</button>
-      <button class="btn btn-klein btn-grau" data-vergleich="${r.id}">Änderungen</button>
-      <button class="btn btn-klein" data-erstmuster="${r.id}">Erstmuster senden</button>
-      <button class="btn btn-klein btn-rot" data-em-loeschen="${r.id}">Löschen</button>
+      <button class="btn btn-klein" data-rezept-bearbeiten="${esc(r.id)}">Bearbeiten</button>
+      <button class="btn btn-klein btn-grau" data-vergleich="${esc(r.id)}">Änderungen</button>
+      <button class="btn btn-klein" data-erstmuster="${esc(r.id)}">Erstmuster senden</button>
+      <button class="btn btn-klein btn-rot" data-em-loeschen="${esc(r.id)}">Löschen</button>
     </div>`;
 }
 
@@ -1058,7 +1063,7 @@ function renderWizBlatt() {
       <h2>1. Foto vom Blatt</h2>
       <p class="hinweis" style="margin-top:0">Das Foto bleibt beim Muster – du hast das Blatt dann in jedem Schritt daneben.</p>
       ${wiz.blatt
-        ? `<img src="${wiz.blatt}" alt="Blatt" class="blatt-bild gross">
+        ? `<img src="${bildQuelle(wiz.blatt)}" alt="Blatt" class="blatt-bild gross">
            <button class="btn btn-klein btn-rot" data-blatt-weg="1" style="margin-top:8px">Foto entfernen</button>`
         : fotoWahl("blatt")}
     </div>
@@ -1089,7 +1094,7 @@ function renderWizBlatt() {
 function renderWizVorlage() {
   titel.textContent = "Vorlage wählen";
   const liste = rezepte().slice().reverse().map(r =>
-    `<button class="grossbtn" data-wiz-kopie="${r.id}">${esc(r.kuerzel)} · ${esc(r.aufbau)}
+    `<button class="grossbtn" data-wiz-kopie="${esc(r.id)}">${esc(r.kuerzel)} · ${esc(r.aufbau)}
       <small>${esc(r.klartext || "")}${r.maschine ? " · " + esc(r.maschine) : ""}</small></button>`).join("");
   inhalt.innerHTML = `
     <button class="btn btn-grau btn-klein" data-wiz-zurueck-start="1">‹ Zurück</button>
@@ -1146,7 +1151,7 @@ function renderWizSchritt() {
   // Das fotografierte Blatt bleibt in jedem Schritt oben stehen
   const blattKarte = wiz.blatt
     ? `<div class="karte blatt-karte">
-         <img src="${wiz.blatt}" alt="Blatt" class="blatt-bild ${wiz.blattGross ? "gross" : ""}" data-blatt-gross="1">
+         <img src="${bildQuelle(wiz.blatt)}" alt="Blatt" class="blatt-bild ${wiz.blattGross ? "gross" : ""}" data-blatt-gross="1">
          <div class="blatt-zeile"><span class="meta">Blatt vom Papier · antippen zum Vergrößern</span>
            <button class="btn btn-klein btn-grau" data-wiz-blatt="1">Text übernehmen</button></div>
        </div>`
@@ -1237,8 +1242,8 @@ function renderRuestCheck() {
       </select>
       <p class="hinweis">Nach dem Abschließen steht der Draht bei dieser Maschine unter „Derzeit laufend".</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-        <button class="btn btn-klein btn-grau" data-verlauf="${r.id}">Rüst-Verlauf</button>
-        ${g > 0 ? `<button class="btn btn-klein" data-ruest-abschluss="${r.id}">Rüstung abschließen</button>` : ""}
+        <button class="btn btn-klein btn-grau" data-verlauf="${esc(r.id)}">Rüst-Verlauf</button>
+        ${g > 0 ? `<button class="btn btn-klein" data-ruest-abschluss="${esc(r.id)}">Rüstung abschließen</button>` : ""}
       </div>
     </div>
     <p class="hinweis">Werte ändern oder das Blatt versenden: im Bereich Erstmuster.</p>`;
@@ -1256,7 +1261,7 @@ function renderVerlauf() {
     return `<div class="eintrag"><div><b>${e.datum}</b>${e.maschine ? " · " + esc(e.maschine) : ""}${e.benutzer ? " · " + esc(e.benutzer) : ""} <span class="rz-vers">${e.art === "kontrolle" ? "Kontrolle" : "Rüstung"}</span></div>${zeilen || '<div class="meta">keine Ist-Werte notiert</div>'}</div>`;
   }).join("") : `<div class="leer">Noch keine abgeschlossene Rüstung.</div>`;
   inhalt.innerHTML = `
-    <button class="btn btn-grau btn-klein" data-verlauf-zurueck="${r ? r.id : ''}">‹ Zurück</button>
+    <button class="btn btn-grau btn-klein" data-verlauf-zurueck="${esc(r ? r.id : '')}">‹ Zurück</button>
     <div class="karte" style="margin-top:12px"><h2>${r ? esc(r.kuerzel + " " + r.aufbau) : "Verlauf"} – frühere Rüstungen</h2>
       ${eintraege.length > 1 ? `<button class="btn btn-klein" data-rvergleich="${esc(state.verlauf)}" style="margin-bottom:10px">Werte vergleichen</button>` : ""}
       ${liste}</div>`;
@@ -1556,7 +1561,7 @@ function renderRezeptVergleich() {
     html = bloecke.join("");
   }
   inhalt.innerHTML = `
-    <button class="btn btn-grau btn-klein" data-vergleich-zurueck="${r.id}">‹ Zurück</button>
+    <button class="btn btn-grau btn-klein" data-vergleich-zurueck="${esc(r.id)}">‹ Zurück</button>
     <div class="karte" style="margin-top:12px">
       <h2>${esc(r.kuerzel + " " + r.aufbau)} – Änderungsverlauf</h2>
       <p class="hinweis" style="margin-top:0">${staende.length} ${staende.length === 1 ? "Stand" : "Stände"} gespeichert. Jeder Block zeigt, was sich geändert hat.</p>
@@ -1739,7 +1744,7 @@ function sucheHtml() {
   const block = (titel, eintraege, zeile) => eintraege.length
     ? `<div class="such-gruppe">${titel} <span class="rz-fort">${eintraege.length}</span></div>${eintraege.slice(0, 8).map(zeile).join("")}`
     : "";
-  return block("Erstmuster", t.erstmuster, r => `<div class="eintrag such-treffer" data-such-em="${r.id}">
+  return block("Erstmuster", t.erstmuster, r => `<div class="eintrag such-treffer" data-such-em="${esc(r.id)}">
       <b>${esc(r.kuerzel)}</b> ${esc(r.aufbau)}<div class="meta">${esc(r.klartext || "")}${r.maschine ? " · " + esc(r.maschine) : ""}${r.beispiel_auftrag ? " · Auftrag " + esc(r.beispiel_auftrag) : ""}</div></div>`)
     + block("Berechnungen", t.spulen, s => `<div class="eintrag such-treffer" data-such-spule="1">
       <b>${s.auftrag ? "Auftrag " + esc(s.auftrag) : "Berechnung"}</b><div class="meta">${fmt(s.endgewicht)} kg · ${s.created_at}</div></div>`)
@@ -1747,7 +1752,7 @@ function sucheHtml() {
       ${x.machine ? "<b>" + esc(x.machine) + ":</b> " : ""}${esc(x.text)}<div class="meta">${x.done ? "erledigt" : "offen"} · ${x.created_at}</div></div>`)
     + block("Notizen", t.notizen, e => `<div class="eintrag such-treffer" data-such-maschine="${esc(e.machine)}">
       <b>${esc(e.machine)}</b> ${esc(e.note || STATUS[e.status].label)}<div class="meta">${e.created_at}${e.benutzer ? " · " + esc(e.benutzer) : ""}</div></div>`)
-    + block("Notlösungen", t.notloesungen, n => `<div class="eintrag such-treffer" data-such-em="${n.rezept_id}">
+    + block("Notlösungen", t.notloesungen, n => `<div class="eintrag such-treffer" data-such-em="${esc(n.rezept_id)}">
       <b>${esc(n.feld)}</b> Soll ${esc(n.soll)} · gefahren ${esc(n.ist)}<div class="meta">${n.maschine ? esc(n.maschine) + " · " : ""}${esc(n.datum)}</div></div>`);
 }
 
@@ -1779,7 +1784,7 @@ function renderMehr() {
       <p class="hinweis" style="margin-top:0">Gelöschtes bleibt ${PAPIERKORB_TAGE} Tage liegen und lässt sich zurückholen.</p>
       ${papierkorb().slice().reverse().map(x => `<div class="eintrag" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <span><b>${esc(x.titel || "Eintrag")}</b><div class="meta">${esc(PK_ARTEN[x.art] || x.art)} · gelöscht ${esc(x.datum)}${x.benutzer ? " · " + esc(x.benutzer) : ""}</div></span>
-        <button class="btn btn-klein" data-pk-zurueck="${x.id}">Zurückholen</button>
+        <button class="btn btn-klein" data-pk-zurueck="${esc(x.id)}">Zurückholen</button>
       </div>`).join("")}
     </div>` : ""}
     <div class="karte">
@@ -1956,6 +1961,13 @@ function mischeListe(vorhanden, importiert) {
   });
   return { liste: reihe.map(id => map[id]), neu: neu, aktualisiert: aktualisiert };
 }
+/* Maschinennamen aus einer fremden Datei: gleiche Regeln wie beim Anlegen von Hand
+   (app.js, data-maschine-neu) – höchstens 20 Zeichen, keine spitzen Klammern, keine Steuerzeichen. */
+function sauberMaschinen(liste) {
+  return (liste || []).filter(x => typeof x === "string")
+    .map(x => x.replace(/[<>"'&\x00-\x1f]/g, "").trim().slice(0, 20))
+    .filter(Boolean);
+}
 function fuehreZusammen(d) {
   let neu = 0, akt = 0;
   ["entries", "todos", "spulen", "rezepte", "ruestungen", "notloesungen"].forEach(k => {
@@ -1965,7 +1977,7 @@ function fuehreZusammen(d) {
   });
   if (Array.isArray(d.maschinen)) {
     const m = maschinen().slice();
-    d.maschinen.forEach(x => { if (typeof x === "string" && !m.some(v => v.toLowerCase() === x.toLowerCase())) { m.push(x); neu++; } });
+    sauberMaschinen(d.maschinen).forEach(x => { if (!m.some(v => v.toLowerCase() === x.toLowerCase())) { m.push(x); neu++; } });
     DB.set("maschinen", m);
   }
   if (d.laufend && typeof d.laufend === "object") {
@@ -2008,8 +2020,9 @@ function importData(ersetzen) {
       const d = JSON.parse(r.result);
       if (!d || typeof d !== "object") throw new Error();
       if (ersetzen) {
-        ["entries", "todos", "spulen", "rezepte", "ruestungen", "maschinen", "notloesungen"]
+        ["entries", "todos", "spulen", "rezepte", "ruestungen", "notloesungen"]
           .forEach(k => { if (Array.isArray(d[k])) DB.set(k, d[k]); });
+        if (Array.isArray(d.maschinen)) DB.set("maschinen", sauberMaschinen(d.maschinen));
         if (d.laufend && typeof d.laufend === "object") DB.set("laufend", d.laufend);
         flash("Sicherung eingelesen.");
       } else {
@@ -2336,7 +2349,7 @@ document.addEventListener("click", e => {
   }
   else if (el.dataset.maschineNeu) {
     const feld = document.getElementById("nm-name");
-    const n = feld.value.trim().slice(0, 20);
+    const n = sauberMaschinen([feld.value])[0] || "";
     if (!n) return flash("Bitte einen Namen eingeben.");
     const list = maschinen();
     if (list.some(m => m.toLowerCase() === n.toLowerCase())) return flash("Diese Maschine gibt es schon.");
@@ -2513,6 +2526,9 @@ function delSpule(id) {
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "4.12": [
+    "Sicherheit: Namen und Bilder aus einer eingelesenen Sicherungsdatei können keinen fremden Code mehr in die App bringen",
+  ],
   "4.11": [
     "Die zwei Foto-Knöpfe bei Blatt und Prüfkarte gingen nicht – jetzt öffnen sie Kamera bzw. Fotoauswahl",
   ],

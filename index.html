@@ -2,6 +2,9 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
+<!-- Zweiter Riegel: selbst wenn irgendwo doch fremder Text ins HTML rutscht, darf er
+     kein Skript nachladen und nichts nach außen senden. Die Daten bleiben im Haus. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <title>Drahtzug – Feinzug 2</title>
 <meta name="apple-mobile-web-app-capable" content="yes">

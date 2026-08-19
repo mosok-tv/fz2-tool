@@ -157,5 +157,72 @@ module.exports = async function () {
   const { S } = werkzeuge(w);
   check("friedl/1234 meldet sich an", d.getElementById("login").hidden === true && S("angemeldet") === "friedl");
 
+  // --- Fremde Sicherungsdatei darf keinen Code einschleusen ---
+  // Eine .json zum "Zusammenführen" kommt von außen. Landet ihr Inhalt ungeprüft
+  // im HTML, führt das Öffnen einer Kachel fremden Code aus.
+  w = starteApp({ maschinen: ['x" data-boese="ja', "<img src=x onerror=1>"] }); d = w.document;
+  await login(w);
+  await warte(120);
+  check("Maschinenname bricht nicht aus dem Attribut aus",
+    d.querySelector('[data-boese="ja"]') === null);
+  check("Maschinenname wird nicht als HTML gedeutet",
+    d.querySelector(".kopf-kachel img") === null);
+
+  // Detailansicht: hier stand der Name früher ungeprüft per innerHTML
+  const kachel = d.querySelector(".kopf-kachel");
+  kachel.click();
+  await warte(80);
+  check("Maschinen-Überschrift deutet HTML nicht",
+    d.getElementById("kopf-titel").querySelector("*") === null &&
+    d.getElementById("kopf-titel").textContent.indexOf('data-boese') !== -1);
+
+  // Importfilter: solche Namen sollen gar nicht erst gespeichert werden.
+  // Läuft über die echte Oberfläche – Datei wählen, „Zusammenführen" drücken.
+  w = starteApp({ maschinen: ["Z49"] }); d = w.document;
+  await login(w);
+  await warte(120);
+  d.querySelector('.tab[data-view="mehr"]').click();
+  await warte(60);
+  const datei = new w.File(
+    [JSON.stringify({ maschinen: ["<svg onload=1>", "  Z68  ", "x".repeat(40)] })],
+    "sicherung.json", { type: "application/json" });
+  const feld = d.getElementById("import-file");
+  Object.defineProperty(feld, "files", { value: [datei], configurable: true });
+  d.querySelector("[data-import]").click();
+  const { S: S2 } = werkzeuge(w);
+  await warteBis(() => (S2("maschinen") || []).length > 1);
+  const nachImport = S2("maschinen");
+  check("Import entfernt gefährliche Zeichen aus Maschinennamen",
+    nachImport.every(m => !/[<>"'&]/.test(m)));
+  check("Import kürzt zu lange Maschinennamen auf 20 Zeichen",
+    nachImport.every(m => m.length <= 20));
+  check("harmloser Maschinenname kommt sauber durch", nachImport.indexOf("Z68") !== -1);
+
+  // --- Bild aus fremder Datei darf kein Attribut aufbrechen ---
+  w = starteApp({ rezepte: [{ id: "r1", nummer: "1350", kuerzel: "VSW",
+    blatt: 'x" onerror="boese()', geaendert_am: "01.01.2026 08:00" }] }); d = w.document;
+  await login(w);
+  await warte(120);
+  d.querySelector('.tab[data-view="erstmuster"]').click();
+  await warte(60);
+  d.querySelector('[data-em]').click();
+  await warte(80);
+  const bild = d.querySelector(".pk-bild");
+  check("gefälschte Bildquelle wird verworfen",
+    !bild || (!bild.hasAttribute("onerror") && bild.getAttribute("src") === ""));
+
+  // echtes Bild muss weiterhin durchkommen
+  w = starteApp({ rezepte: [{ id: "r1", nummer: "1350", kuerzel: "VSW",
+    blatt: "data:image/jpeg;base64,AAAA", geaendert_am: "01.01.2026 08:00" }] }); d = w.document;
+  await login(w);
+  await warte(120);
+  d.querySelector('.tab[data-view="erstmuster"]').click();
+  await warte(60);
+  d.querySelector('[data-em]').click();
+  await warte(80);
+  check("echtes Foto wird weiterhin angezeigt",
+    d.querySelector(".pk-bild").getAttribute("src") === "data:image/jpeg;base64,AAAA");
+
+
   return check.ergebnis();
 };
