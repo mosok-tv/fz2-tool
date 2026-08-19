@@ -4,6 +4,7 @@ const suiten = [
   ["Sicherheit", "./sicherheit.test.js"],
   ["Erstmuster-PDF", "./pdf.test.js"],
   ["Stylesheet", "./stil.test.js"],
+  ["Verdrahtung", "./verdrahtung.test.js"],
 ];
 
 (async () => {

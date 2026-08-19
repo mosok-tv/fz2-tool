@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "4.10";
+const APP_VERSION = "4.11";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -2222,7 +2222,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-speichern],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-blatt],[data-wiz-blatt-zurueck],[data-blatt-foto],[data-blatt-weg],[data-blatt-gross],[data-blatt-lesen],[data-blatt-uebernehmen],[data-blatt-ohne],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-code-fragen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt],[data-import-ersetzen],[data-pk-zurueck],[data-gesehen],[data-kontrolle],[data-kontrolle-zurueck],[data-kontrolle-speichern],[data-pk-foto],[data-pk-weg],[data-such-em],[data-such-spule],[data-such-aufgabe],[data-such-maschine]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-blatt],[data-wiz-blatt-zurueck],[data-foto-quelle],[data-blatt-weg],[data-blatt-gross],[data-blatt-lesen],[data-blatt-uebernehmen],[data-blatt-ohne],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-code-fragen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt],[data-import-ersetzen],[data-pk-zurueck],[data-gesehen],[data-kontrolle],[data-kontrolle-zurueck],[data-kontrolle-speichern],[data-pk-weg],[data-such-em],[data-such-spule],[data-such-aufgabe],[data-such-maschine]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -2299,7 +2299,6 @@ document.addEventListener("click", e => {
   }
   // gilt für den Assistenten und für die Rüst-Checkliste – beide zurück zur Liste
   else if (el.dataset.rezeptZurueck) { state.rezeptForm = null; wiz = null; state.verlauf = null; state.rezept = null; render(); window.scrollTo(0, 0); }
-  else if (el.dataset.rezeptSpeichern) speichereRezept();
   else if (el.dataset.rezeptBearbeiten) { state.rezeptForm = el.dataset.rezeptBearbeiten; state.emDetail = el.dataset.rezeptBearbeiten; wizStart(el.dataset.rezeptBearbeiten); render(); window.scrollTo(0, 0); }
   else if (el.dataset.verlauf) { state.verlauf = el.dataset.verlauf; state.rezept = null; render(); window.scrollTo(0, 0); }
   else if (el.dataset.verlaufZurueck) { state.verlauf = null; state.rezept = el.dataset.verlaufZurueck; render(); window.scrollTo(0, 0); }
@@ -2514,6 +2513,9 @@ function delSpule(id) {
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "4.11": [
+    "Die zwei Foto-Knöpfe bei Blatt und Prüfkarte gingen nicht – jetzt öffnen sie Kamera bzw. Fotoauswahl",
+  ],
   "4.10": [
     "Blatt und Prüfkarte: Foto neu aufnehmen oder eines nehmen, das schon auf dem Handy liegt",
     "Bild wird sofort übernommen – der zweite Knopf entfällt",

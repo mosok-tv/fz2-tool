@@ -463,6 +463,14 @@ module.exports = async function () {
   check("Blatt: beide Knöpfe zeigen auf ihr Feld",
     d.querySelector('[data-foto-quelle="foto-blatt-kamera"]') !== null &&
     d.querySelector('[data-foto-quelle="foto-blatt-datei"]') !== null);
+  // der Knopf muss das Dateifeld auch wirklich öffnen
+  let geoeffnet = [];
+  ["foto-blatt-kamera", "foto-blatt-datei"].forEach(id => {
+    d.getElementById(id).addEventListener("click", ev => { geoeffnet.push(id); ev.preventDefault(); });
+    d.querySelector(`[data-foto-quelle="${id}"]`).click();
+  });
+  check("Blatt: Knopf öffnet Kamera bzw. Fotoauswahl",
+    geoeffnet.length === 2 && geoeffnet[0] === "foto-blatt-kamera" && geoeffnet[1] === "foto-blatt-datei");
   // so unsauber, wie die Texterkennung vom Papier liefert
   setVal(d.getElementById("blatt-text"), [
     "Erstmusterprüfung Feinzug 2",
@@ -514,6 +522,10 @@ module.exports = async function () {
     d.getElementById("foto-pk-kamera") !== null &&
     !d.getElementById("foto-pk-datei").hasAttribute("capture") &&
     d.getElementById("foto-pk-datei").dataset.id === d.getElementById("foto-pk-kamera").dataset.id);
+  let pkAuf = false;
+  d.getElementById("foto-pk-datei").addEventListener("click", ev => { pkAuf = true; ev.preventDefault(); });
+  d.querySelector('[data-foto-quelle="foto-pk-datei"]').click();
+  check("Prüfkarte: Knopf öffnet die Fotoauswahl", pkAuf);
   let geteilt = null;
   w.navigator.canShare = () => true;
   w.navigator.share = o => { geteilt = o; return Promise.resolve(); };
