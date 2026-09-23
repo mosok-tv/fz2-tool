@@ -437,7 +437,7 @@ function renderMaschineDetail() {
     <button class="btn btn-grau btn-klein" data-zurueck="1">‹ Zurück</button>
     ${laufendHtml(m)}
     <div class="karte" style="margin-top:12px">
-      <h2>Neuer Eintrag für ${m}</h2>
+      <h2>Neuer Eintrag für ${esc(m)}</h2>
       <div class="label">Status</div>
       <div class="status-wahl">${optionen}</div>
       <div class="label">Schicht</div>
