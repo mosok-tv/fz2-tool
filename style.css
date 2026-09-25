@@ -320,3 +320,22 @@ body.gross .tab { font-size: .8rem; }
 .flash { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(78px + env(safe-area-inset-bottom));
   background: var(--dunkel); color: #fff; padding: 11px 18px; border-radius: 10px; font-size: .9rem;
   z-index: 20; box-shadow: 0 3px 10px rgba(0,0,0,.25); max-width: 90%; }
+
+/* Fertigware (Blatt WPD-005F1) */
+.fw-karte { border-left: 5px solid var(--blau); }
+.kachel-reihe { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.kachel { background: #f4f7f9; border: 1px solid var(--linie); border-radius: 9px; padding: 8px 6px; text-align: center; }
+.kachel b { display: block; font-size: 1.35rem; font-variant-numeric: tabular-nums; color: var(--text); }
+.kachel span { font-size: .75rem; color: var(--grau); }
+.fw-tab { width: 100%; border-collapse: collapse; font-size: .88rem; }
+.fw-tab th { text-align: left; font-size: .72rem; font-weight: 600; color: var(--grau); padding: 4px 4px; border-bottom: 1px solid var(--linie); }
+.fw-tab td { padding: 6px 4px; border-bottom: 1px solid #e4e9ee; vertical-align: middle; font-variant-numeric: tabular-nums; }
+.fw-tab .z { text-align: right; white-space: nowrap; }
+.fw-tab .meta { font-size: .72rem; color: var(--grau); }
+.fw-summe td { font-weight: 700; border-bottom: none; border-top: 1.5px solid var(--linie); }
+.fw-linien { width: auto; padding: 6px 10px; font-size: 15px; }
+.fw-zeile { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; text-align: left;
+  background: none; border: none; border-bottom: 1px solid #e4e9ee; padding: 10px 0; font: inherit; color: var(--text); cursor: pointer; }
+.fw-zeile .meta { display: block; font-size: .75rem; color: var(--grau); }
+.fw-zahlen { text-align: right; font-variant-numeric: tabular-nums; }
+.fw-gesamt { font-weight: 700; padding-top: 8px; }

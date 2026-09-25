@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "4.12";
+const APP_VERSION = "4.13";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -107,6 +107,11 @@ function wer() { return DB.get("angemeldet", "") || ""; }
 function maschinen() { const m = DB.get("maschinen", null); return Array.isArray(m) ? m : MASCHINEN_STANDARD.slice(); }
 // Was gerade auf einer Maschine läuft: { "Z49": { kuerzel, aufbau, ... } }
 function laufend() { const l = DB.get("laufend", null); return (l && typeof l === "object") ? l : {}; }
+// Fertigware (Blatt WPD-005F1): was eingebaut ist und was fertig wurde – echte Werte,
+// getrennt von der Spulen-Berechnung (spulen), die nur vorhersagt
+function vorzuege()     { return DB.get("vorzuege", []); }       // Input: eingebaute Coils, aus_at = ausgebaut
+function fertigspulen() { return DB.get("fertigspulen", []); }   // Output: fertige Spulen
+function linienVon(m) { const n = Number((DB.get("linien", {}) || {})[m]); return n >= 1 && n <= 12 ? Math.floor(n) : 1; }
 
 /* Erstmuster-Formulare des Drahtwerks. Je Formular die Werte, die der
    Maschinenbediener einstellt (im Blatt mit * gekennzeichnet). */
@@ -305,7 +310,7 @@ window.addEventListener("error", e => logFehler("Programmfehler", e.message, (e.
 window.addEventListener("unhandledrejection", e => logFehler("Programmfehler", (e.reason && e.reason.message) || e.reason, e.reason && e.reason.stack));
 
 /* ---------- Router ---------- */
-const state = { view: "maschinen", maschine: null, overlay: null, rezept: null, rezeptForm: null, verlauf: null, vergleich: null, emDetail: null, rvergleich: null, abweichung: null, kontrolle: null };
+const state = { view: "maschinen", maschine: null, overlay: null, rezept: null, rezeptForm: null, verlauf: null, vergleich: null, emDetail: null, rvergleich: null, abweichung: null, kontrolle: null, fwForm: null };
 let spModus = "summe";  // Berechnungsart der Vorzüge: "summe" | "kleinster"
 let ruestSuche = "";    // Suchbegriff im Rüsten-Bereich
 let emSuche = "";       // Suchbegriff im Erstmuster-Bereich
@@ -318,7 +323,7 @@ const titel = document.getElementById("kopf-titel");
 function zeige(view) {
   state.view = view; state.overlay = null; state.maschine = null; state.rezept = null;
   state.rezeptForm = null; state.verlauf = null; state.vergleich = null; state.emDetail = null;
-  state.rvergleich = null; state.abweichung = null; state.kontrolle = null;
+  state.rvergleich = null; state.abweichung = null; state.kontrolle = null; state.fwForm = null;
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("aktiv", t.dataset.view === view));
   render();
   window.scrollTo(0, 0);
@@ -328,7 +333,7 @@ function render() {
   if (state.abweichung) return renderAbweichung();       // direkt nach dem Rüsten
   if (state.kontrolle) return renderKontrolle();         // Werte mitten in der Schicht prüfen
   if (state.rvergleich) return renderRuestVergleich();   // aus jedem Bereich erreichbar
-  if (state.view === "maschinen" && state.maschine) return renderMaschineDetail();
+  if (state.view === "maschinen" && state.maschine) return state.fwForm ? renderFwForm() : renderMaschineDetail();
   if (state.view === "ruesten") {
     if (state.verlauf) return renderVerlauf();
     if (state.rezept) return renderRuestCheck();
@@ -436,6 +441,7 @@ function renderMaschineDetail() {
   inhalt.innerHTML = `
     <button class="btn btn-grau btn-klein" data-zurueck="1">‹ Zurück</button>
     ${laufendHtml(m)}
+    ${fertigwareHtml(m)}
     <div class="karte" style="margin-top:12px">
       <h2>Neuer Eintrag für ${esc(m)}</h2>
       <div class="label">Status</div>
@@ -475,6 +481,209 @@ function laufendHtml(m) {
         <button class="btn btn-klein btn-grau" data-laufend-ende="${esc(m)}">Läuft nicht mehr</button>
       </div>
     </div>`;
+}
+
+/* ---------- Fertigware: Blatt WPD-005F1 „Eingesetzte Fertigware DZ" ----------
+   Je Maschine und Auftrag: welche Vorzüge eingebaut sind (Input) und welche Spulen fertig wurden (Output).
+   Die Abholung macht das Lager – sie bleibt in der App weg und steht im PDF nur als leere Spalte. */
+function fwAuftrag(m) { const l = laufend()[m]; return (l && l.auftrag) ? String(l.auftrag) : ""; }
+function fwSpulen(m, a) { return fertigspulen().filter(s => s.machine === m && String(s.auftrag || "") === a); }
+function fwEingebaut(m) {
+  return vorzuege().filter(v => v.machine === m && !v.aus_at)
+    .sort((x, y) => (Number(x.linie) || 0) - (Number(y.linie) || 0));
+}
+// Vorzüge fürs Blatt: im Auftrag eingebaut oder während seiner Spulen in der Maschine
+function fwVorzuegeFuer(m, a) {
+  const zeiten = fwSpulen(m, a).map(s => zeitWert(s.created_at));
+  const von = Math.min.apply(null, zeiten), bis = Math.max.apply(null, zeiten);
+  return vorzuege().filter(v => v.machine === m && (String(v.auftrag || "") === a
+    || (zeiten.length && zeitWert(v.ein_at) <= bis && (!v.aus_at || zeitWert(v.aus_at) >= von))));
+}
+function fwSumme(liste, feld) { return liste.reduce((s, x) => s + (Number(x[feld]) || 0), 0); }
+// Etiketten laufen Sp.1, Sp.2 … – vorgeschlagen wird die nächste Nummer
+function fwNaechsteNr(m, a) {
+  return String(fwSpulen(m, a).reduce((n, s) => Math.max(n, parseInt(String(s.nr).replace(/\D/g, ""), 10) || 0), 0) + 1);
+}
+function fwAuftragText(a) { return a ? "Auftrag " + a : "ohne Auftragsnummer"; }
+
+function fertigwareHtml(m) {
+  const a = fwAuftrag(m), n = linienVon(m), ein = fwEingebaut(m), sp = fwSpulen(m, a);
+  const kgIn = fwSumme(ein, "kg");
+  const vz = ein.length ? `<table class="fw-tab">
+      <tr>${n > 1 ? "<th>Linie</th>" : ""}<th>Korb</th><th>Coilnr.</th><th class="z">kg</th><th></th></tr>
+      ${ein.map(v => `<tr>${n > 1 ? `<td>${esc(v.linie)}</td>` : ""}<td>${esc(v.korb)}</td><td>${esc(v.coil)}</td>
+        <td class="z">${fmt(Number(v.kg) || 0, 0)}</td>
+        <td class="z"><button class="btn btn-klein btn-grau" data-vorzug-aus="${esc(v.id)}">aus</button></td></tr>`).join("")}
+      <tr class="fw-summe"><td colspan="${n > 1 ? 3 : 2}">${ein.length} ${ein.length === 1 ? "Vorzug" : "Vorzüge"}</td><td class="z">${fmt(kgIn, 0)}</td><td></td></tr>
+    </table>` : `<div class="leer">Noch kein Vorzug eingetragen.</div>`;
+  const spl = sp.length ? `<table class="fw-tab">
+      <tr><th>Spule</th><th class="z">Länge m</th><th class="z">kg</th><th></th></tr>
+      ${sp.map(s => `<tr><td>Sp. ${esc(s.nr)}<div class="meta">${esc(s.created_at)}${s.benutzer ? " · " + esc(s.benutzer) : ""}</div></td>
+        <td class="z">${s.laenge_m ? fmt(Number(s.laenge_m) || 0, 0) : "–"}</td><td class="z">${fmt(Number(s.gewicht_kg) || 0)}</td>
+        <td class="z"><button class="btn btn-klein btn-grau" data-fw-spule-weg="${esc(s.id)}">✕</button></td></tr>`).join("")}
+      <tr class="fw-summe"><td>${sp.length} ${sp.length === 1 ? "Spule" : "Spulen"}</td><td class="z">${fmt(fwSumme(sp, "laenge_m"), 0)}</td><td class="z">${fmt(fwSumme(sp, "gewicht_kg"))}</td><td></td></tr>
+    </table>` : `<div class="leer">Noch keine Spule fertig.</div>`;
+  // frühere Aufträge dieser Maschine – das Blatt wird oft erst gebraucht, wenn schon der nächste läuft
+  const frueher = [];
+  fertigspulen().forEach(s => {
+    const x = String(s.auftrag || "");
+    if (s.machine === m && x !== a && frueher.indexOf(x) === -1) frueher.push(x);
+  });
+  const frHtml = frueher.slice(-5).reverse().map(x => `<div class="v-zeile"><span>${esc(fwAuftragText(x))} · ${fwSpulen(m, x).length} Spulen</span>
+      <button class="btn btn-klein btn-grau" data-fw-pdf="${esc(m)}" data-wert="${esc(x)}">PDF</button></div>`).join("");
+  return `
+    <div class="karte fw-karte" style="margin-top:12px">
+      <h2>Fertigware · ${esc(fwAuftragText(a))}</h2>
+      <div class="kachel-reihe">
+        <div class="kachel"><b>${sp.length}</b><span>Spulen fertig</span></div>
+        <div class="kachel"><b>${ein.length}</b><span>Vorzüge drin</span></div>
+        <div class="kachel"><b>${fmt(kgIn, 0)}</b><span>kg Input</span></div>
+      </div>
+      <div class="lauf-kopf" style="margin:16px 0 6px">Eingebaute Vorzüge</div>
+      ${vz}
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+        <button class="btn btn-klein btn-grau" data-vorzug-neu="${esc(m)}">Vorzug einbauen / wechseln</button>
+        <label class="meta" for="fw-linien">Linien:</label>
+        <select id="fw-linien" class="fw-linien" data-fw-linien="${esc(m)}">${Array.from({ length: 12 }, (_, i) =>
+          `<option value="${i + 1}"${i + 1 === n ? " selected" : ""}>${i + 1}</option>`).join("")}</select>
+      </div>
+      <div class="lauf-kopf" style="margin:18px 0 6px">Fertige Spulen</div>
+      ${spl}
+      <button class="btn btn-gruen" data-spule-fertig="${esc(m)}" style="margin-top:12px">+ Spule fertig</button>
+      ${sp.length || ein.length ? `<button class="btn btn-klein btn-grau" data-fw-pdf="${esc(m)}" data-wert="${esc(a)}" style="margin-top:10px">Blatt als PDF</button>` : ""}
+      ${frHtml ? `<div class="lauf-kopf" style="margin:16px 0 4px">Frühere Aufträge</div>${frHtml}` : ""}
+    </div>`;
+}
+
+// Eingabe „Spule fertig" bzw. „Vorzug einbauen" – state.fwForm = "spule" | "vorzug"
+function renderFwForm() {
+  const m = state.maschine, a = fwAuftrag(m);
+  titel.textContent = m;
+  const kopf = `<button class="btn btn-grau btn-klein" data-fw-abbruch="1">‹ Zurück</button>`;
+  if (state.fwForm === "spule") {
+    inhalt.innerHTML = `${kopf}
+      <div class="karte" style="margin-top:12px">
+        <h2>Spule fertig</h2>
+        <div class="meta">${esc(m)} · ${esc(fwAuftragText(a))}</div>
+        <div class="label">Spulen-Nr. (Etikett)</div>
+        <div class="schmal"><input type="text" id="fw-nr" value="${esc(fwNaechsteNr(m, a))}" maxlength="10"></div>
+        <p class="hinweis">Vorgeschlagen ist die nächste Nummer – bei Bedarf überschreiben.</p>
+        <div class="zwei">
+          <div><div class="label">Länge [m]</div><input type="text" id="fw-laenge" class="num" inputmode="decimal" placeholder="z. B. 73400"></div>
+          <div><div class="label">Gewicht [kg]</div><input type="text" id="fw-gewicht" class="num" inputmode="decimal" placeholder="z. B. 268,53"></div>
+        </div>
+        <button class="btn btn-gruen" data-fw-spule-speichern="1" style="margin-top:14px">Spule eintragen</button>
+      </div>`;
+    return;
+  }
+  const n = linienVon(m), ein = fwEingebaut(m);
+  const belegt = l => ein.find(v => String(v.linie) === String(l));
+  let frei = 1; while (frei < n && belegt(frei)) frei++;
+  const linie = n > 1 ? `<div class="label">Linie</div>
+      <select id="fw-linie">${Array.from({ length: n }, (_, i) => {
+        const b = belegt(i + 1);
+        return `<option value="${i + 1}"${i + 1 === frei ? " selected" : ""}>${i + 1}${b ? " – belegt mit Coil " + esc(b.coil) : ""}</option>`;
+      }).join("")}</select>` : "";
+  inhalt.innerHTML = `${kopf}
+    <div class="karte" style="margin-top:12px">
+      <h2>Vorzug einbauen</h2>
+      <div class="meta">${esc(m)} · ${esc(fwAuftragText(a))}</div>
+      ${linie}
+      <div class="zwei">
+        <div><div class="label">Spulen-/Korb-Nr.</div><input type="text" id="fw-korb" maxlength="20"></div>
+        <div><div class="label">Coilnr.</div><input type="text" id="fw-coil" inputmode="numeric" maxlength="30"></div>
+      </div>
+      <div class="label">Gewicht [kg]</div>
+      <div class="schmal"><input type="text" id="fw-kg" class="num" inputmode="decimal"></div>
+      <p class="hinweis">Ist die Linie schon belegt, wird der alte Vorzug als ausgebaut abgelegt – er bleibt auf dem Blatt stehen.</p>
+      <button class="btn" data-fw-vorzug-speichern="1" style="margin-top:12px">Vorzug einbauen</button>
+    </div>`;
+}
+
+function speichereFwSpule() {
+  const m = state.maschine, a = fwAuftrag(m);
+  const nr = document.getElementById("fw-nr").value.trim().replace(/^sp\.?\s*/i, "").slice(0, 10);
+  // Meter sind ganze Zahlen – ein Punkt ist hier immer Tausendertrenner (73.400)
+  const laenge = zahl(document.getElementById("fw-laenge").value.replace(/\./g, ""));
+  const gewicht = zahl(document.getElementById("fw-gewicht").value);
+  if (!nr) return flash("Bitte die Spulen-Nr. eintragen.");
+  if (!(gewicht > 0)) return flash("Bitte das Gewicht eintragen.");
+  if (fwSpulen(m, a).some(s => String(s.nr) === nr) && !confirm("Sp. " + nr + " ist für diesen Auftrag schon eingetragen. Trotzdem noch einmal?")) return;
+  const l = laufend()[m];
+  const liste = fertigspulen().slice();
+  liste.push({ id: neueId(), machine: m, auftrag: a, nr: nr, laenge_m: laenge > 0 ? laenge : null, gewicht_kg: gewicht,
+               produkt: l ? [l.kuerzel, l.aufbau, l.klartext].filter(Boolean).join(" ") : "",
+               created_at: jetzt(), benutzer: wer() });
+  DB.set("fertigspulen", liste);
+  state.fwForm = null; render(); flash("Sp. " + nr + " eingetragen.");
+}
+
+function speichereFwVorzug() {
+  const m = state.maschine, a = fwAuftrag(m), n = linienVon(m);
+  const linie = n > 1 ? Number(document.getElementById("fw-linie").value) : 1;
+  const korb = document.getElementById("fw-korb").value.trim().slice(0, 20);
+  const coil = document.getElementById("fw-coil").value.trim().slice(0, 30);
+  const kg = zahl(document.getElementById("fw-kg").value);
+  if (!coil) return flash("Bitte die Coilnummer eintragen.");
+  if (!(kg > 0)) return flash("Bitte das Gewicht eintragen.");
+  const zeit = jetzt();
+  // alter Vorzug auf derselben Linie ist damit ausgebaut
+  const liste = vorzuege().map(v => (v.machine === m && !v.aus_at && Number(v.linie) === linie)
+    ? Object.assign({}, v, { aus_at: zeit, aus_von: wer() }) : v);
+  liste.push({ id: neueId(), machine: m, auftrag: a, linie: linie, korb: korb, coil: coil, kg: kg, ein_at: zeit, benutzer: wer() });
+  DB.set("vorzuege", liste);
+  state.fwForm = null; render(); flash("Vorzug auf Linie " + linie + " eingebaut.");
+}
+
+function baueFwVorzugAus(id) {
+  const v = vorzuege().find(x => x.id === id);
+  if (!v || !confirm("Coil " + v.coil + " als ausgebaut ablegen?")) return;
+  DB.set("vorzuege", vorzuege().map(x => x.id === id ? Object.assign({}, x, { aus_at: jetzt(), aus_von: wer() }) : x));
+  render();
+}
+
+function loescheFwSpule(id) {
+  const s = fertigspulen().find(x => x.id === id);
+  if (!s || !confirm("Sp. " + s.nr + " löschen? Sie liegt danach 30 Tage im Papierkorb.")) return;
+  inDenPapierkorb("fertigspulen", s, "Sp. " + s.nr + " · " + s.machine + " · " + fwAuftragText(String(s.auftrag || "")));
+  DB.set("fertigspulen", fertigspulen().filter(x => x.id !== id));
+  render();
+}
+
+// Übersicht über alle Maschinen – oben im Bereich Spulen
+function fertigwareUebersichtHtml() {
+  const zeilen = maschinen().map(m => ({ m: m, a: fwAuftrag(m) }))
+    .map(z => Object.assign(z, { sp: fwSpulen(z.m, z.a), ein: fwEingebaut(z.m) }))
+    .filter(z => z.sp.length || z.ein.length);
+  if (!zeilen.length) return `<div class="karte"><h2>Fertigware</h2>
+    <div class="hinweis" style="margin-top:0">Noch nichts eingetragen. Fertige Spulen und Vorzüge trägst du an der Maschine ein: Übergabe › Maschine › Fertigware.</div></div>`;
+  const sum = (f, k) => zeilen.reduce((s, z) => s + fwSumme(z[f], k), 0);
+  return `<div class="karte"><h2>Fertigware · laufende Aufträge</h2>
+    ${zeilen.map(z => `<button class="fw-zeile" data-fw-zur-maschine="${esc(z.m)}">
+      <span><b>${esc(z.m)}</b><span class="meta">${esc(fwAuftragText(z.a))}</span></span>
+      <span class="fw-zahlen"><b>${z.sp.length}</b> Spulen · ${fmt(fwSumme(z.sp, "gewicht_kg"), 0)} kg<span class="meta">${z.ein.length} Vorzüge · ${fmt(fwSumme(z.ein, "kg"), 0)} kg</span></span>
+    </button>`).join("")}
+    <div class="v-zeile fw-gesamt"><span>Gesamt</span><span>${zeilen.reduce((s, z) => s + z.sp.length, 0)} Spulen · ${fmt(sum("sp", "gewicht_kg"), 0)} kg</span></div>
+  </div>`;
+}
+
+async function sendeFertigware(m, a) {
+  const sp = fwSpulen(m, a), vz = fwVorzuegeFuer(m, a);
+  if (!sp.length && !vz.length) return flash("Für diesen Auftrag ist noch nichts eingetragen.");
+  const produkt = (sp.filter(s => s.produkt).pop() || {}).produkt || "";
+  const name = ("Fertigware_" + m + "_" + (a || "ohne-Auftrag")).replace(/[^A-Za-z0-9._-]/g, "_") + ".pdf";
+  let blob;
+  try { blob = fertigwarePdf({ maschine: m, auftrag: a, produkt: produkt }, vz, sp, wer(), jetzt()); }
+  catch (e) { logFehler("PDF", e.message, e.stack); return flash("PDF konnte nicht erstellt werden."); }
+  const datei = new File([blob], name, { type: "application/pdf" });
+  if (navigator.canShare && navigator.canShare({ files: [datei] })) {
+    try { await navigator.share({ files: [datei], title: name, text: "Eingesetzte Fertigware " + m + " – " + fwAuftragText(a) }); return; }
+    catch (e) { if (e && e.name === "AbortError") return; }   // Nutzer hat abgebrochen
+  }
+  const el = document.createElement("a");
+  el.href = URL.createObjectURL(blob); el.download = name;
+  document.body.appendChild(el); el.click(); el.remove();
+  setTimeout(() => URL.revokeObjectURL(el.href), 5000);
 }
 
 /* ---------- Ansicht: Aufgaben ---------- */
@@ -563,6 +772,7 @@ function renderSpulen() {
   const liste = spulenListeHtml();
 
   inhalt.innerHTML = `
+    ${fertigwareUebersichtHtml()}
     <div class="karte">
       <div class="label">Auftragsnummer (optional)</div>
       <input type="text" id="sp-auftrag" placeholder="z. B. 18034" maxlength="50">
@@ -1908,7 +2118,7 @@ async function codeEntfernen() {
 
 /* ---------- Papierkorb: Gelöschtes 30 Tage aufheben ---------- */
 const PAPIERKORB_TAGE = 30;
-const PK_ARTEN = { rezepte: "Erstmuster", todos: "Aufgabe", spulen: "Berechnung" };
+const PK_ARTEN = { rezepte: "Erstmuster", todos: "Aufgabe", spulen: "Berechnung", fertigspulen: "Fertige Spule" };
 function inDenPapierkorb(art, eintrag, titel) {
   const pk = papierkorb();
   pk.push({ id: neueId(), art: art, titel: titel, daten: eintrag, datum: jetzt(), benutzer: wer() });
@@ -1938,7 +2148,7 @@ function stelleWiederHer(id) {
 function letzteSicherung() { return DB.get("sicherung_ts", null); }
 function sicherungFaellig() {
   const ts = letzteSicherung();
-  const hatDaten = entries().length + todos().length + spulen().length + rezepte().length > 0;
+  const hatDaten = entries().length + todos().length + spulen().length + rezepte().length + fertigspulen().length + vorzuege().length > 0;
   if (!hatDaten) return false;
   return ts == null || (Date.now() - ts >= WOCHE_MS);
 }
@@ -1960,7 +2170,7 @@ function pruefeHinweisBanner() {
 /* ---------- Sicherungen zusammenführen (zwei Geräte, ein Datenstand) ---------- */
 function letzteAenderung(x) {
   return Math.max(zeitWert(x.geaendert_am), zeitWert(x.versendet_am), zeitWert(x.done_at),
-                  zeitWert(x.datum), zeitWert(x.created_at), zeitWert(x.seit));
+                  zeitWert(x.datum), zeitWert(x.created_at), zeitWert(x.seit), zeitWert(x.aus_at));
 }
 function mischeListe(vorhanden, importiert) {
   const map = {}, reihe = [];
@@ -1983,7 +2193,7 @@ function sauberMaschinen(liste) {
 }
 function fuehreZusammen(d) {
   let neu = 0, akt = 0;
-  ["entries", "todos", "spulen", "rezepte", "ruestungen", "notloesungen"].forEach(k => {
+  ["entries", "todos", "spulen", "rezepte", "ruestungen", "notloesungen", "vorzuege", "fertigspulen"].forEach(k => {
     if (!Array.isArray(d[k])) return;
     const r = mischeListe(DB.get(k, []), d[k]);
     DB.set(k, r.liste); neu += r.neu; akt += r.aktualisiert;
@@ -2001,13 +2211,14 @@ function fuehreZusammen(d) {
     });
     DB.set("laufend", l);
   }
+  if (d.linien && typeof d.linien === "object") DB.set("linien", Object.assign(DB.get("linien", {}) || {}, d.linien));
   return { neu: neu, aktualisiert: akt };
 }
 
 function exportData() {
   const daten = { version: 1, exportiert: jetzt(), entries: entries(), todos: todos(), spulen: spulen(),
                   rezepte: rezepte(), ruestungen: ruestungen(), maschinen: maschinen(), laufend: laufend(),
-                  notloesungen: notloesungen() };
+                  notloesungen: notloesungen(), vorzuege: vorzuege(), fertigspulen: fertigspulen(), linien: DB.get("linien", {}) };
   const text = JSON.stringify(daten, null, 2);
   const name = "drahtzug-sicherung-" + jetzt().split(" ")[0].split(".").reverse().join("-") + ".json";
   DB.set("sicherung_ts", Date.now());
@@ -2033,10 +2244,11 @@ function importData(ersetzen) {
       const d = JSON.parse(r.result);
       if (!d || typeof d !== "object") throw new Error();
       if (ersetzen) {
-        ["entries", "todos", "spulen", "rezepte", "ruestungen", "notloesungen"]
+        ["entries", "todos", "spulen", "rezepte", "ruestungen", "notloesungen", "vorzuege", "fertigspulen"]
           .forEach(k => { if (Array.isArray(d[k])) DB.set(k, d[k]); });
         if (Array.isArray(d.maschinen)) DB.set("maschinen", sauberMaschinen(d.maschinen));
         if (d.laufend && typeof d.laufend === "object") DB.set("laufend", d.laufend);
+        if (d.linien && typeof d.linien === "object") DB.set("linien", d.linien);
         flash("Sicherung eingelesen.");
       } else {
         const e = fuehreZusammen(d);
@@ -2248,7 +2460,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-blatt],[data-wiz-blatt-zurueck],[data-foto-quelle],[data-blatt-weg],[data-blatt-gross],[data-blatt-lesen],[data-blatt-uebernehmen],[data-blatt-ohne],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-code-fragen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt],[data-import-ersetzen],[data-pk-zurueck],[data-gesehen],[data-kontrolle],[data-kontrolle-zurueck],[data-kontrolle-speichern],[data-pk-weg],[data-such-em],[data-such-spule],[data-such-aufgabe],[data-such-maschine]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-blatt],[data-wiz-blatt-zurueck],[data-foto-quelle],[data-blatt-weg],[data-blatt-gross],[data-blatt-lesen],[data-blatt-uebernehmen],[data-blatt-ohne],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-code-fragen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt],[data-import-ersetzen],[data-pk-zurueck],[data-gesehen],[data-kontrolle],[data-kontrolle-zurueck],[data-kontrolle-speichern],[data-pk-weg],[data-such-em],[data-such-spule],[data-such-aufgabe],[data-such-maschine],[data-spule-fertig],[data-vorzug-neu],[data-vorzug-aus],[data-fw-spule-weg],[data-fw-spule-speichern],[data-fw-vorzug-speichern],[data-fw-abbruch],[data-fw-pdf],[data-fw-zur-maschine]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -2386,6 +2598,15 @@ document.addEventListener("click", e => {
   else if (el.dataset.suchSpule) zeige("spulen");
   else if (el.dataset.suchAufgabe) zeige("aufgaben");
   else if (el.dataset.suchMaschine) { zeige("maschinen"); state.maschine = el.dataset.suchMaschine; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.spuleFertig) { state.fwForm = "spule"; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.vorzugNeu) { state.fwForm = "vorzug"; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.vorzugAus) baueFwVorzugAus(el.dataset.vorzugAus);
+  else if (el.dataset.fwSpuleWeg) loescheFwSpule(el.dataset.fwSpuleWeg);
+  else if (el.dataset.fwSpuleSpeichern) speichereFwSpule();
+  else if (el.dataset.fwVorzugSpeichern) speichereFwVorzug();
+  else if (el.dataset.fwAbbruch) { state.fwForm = null; render(); }
+  else if (el.dataset.fwPdf) sendeFertigware(el.dataset.fwPdf, el.dataset.wert || "");
+  else if (el.dataset.fwZurMaschine) { zeige("maschinen"); state.maschine = el.dataset.fwZurMaschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.gesehen) merkeGesehen();
   else if (el.dataset.kontrolle) { state.kontrolle = el.dataset.kontrolle; render(); window.scrollTo(0, 0); }
   else if (el.dataset.kontrolleZurueck) { state.kontrolle = null; render(); window.scrollTo(0, 0); }
@@ -2477,6 +2698,11 @@ document.addEventListener("input", e => {
 // Bild ist ausgesucht (egal ob Kamera oder Fotos-App) – gleich übernehmen, ohne zweiten Knopf
 document.addEventListener("change", e => {
   const el = e.target;
+  if (el.dataset && el.dataset.fwLinien) {
+    const l = DB.get("linien", {}) || {};
+    l[el.dataset.fwLinien] = Number(el.value) || 1;
+    DB.set("linien", l); render(); return;
+  }
   if (!el.dataset || !el.dataset.fotoZiel) return;
   const f = el.files && el.files[0];
   el.value = "";  // damit dasselbe Bild später wieder gewählt werden kann
@@ -2539,6 +2765,11 @@ function delSpule(id) {
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "4.13": [
+    "Neu: Blatt „Eingesetzte Fertigware DZ“ (WPD-005F1) an jeder Maschine – eingebaute Vorzüge und fertige Spulen je Auftrag eintragen",
+    "Spulen-Nummer (Sp. 1, Sp. 2 …) wird vorgeschlagen, Linienzahl je Maschine einstellbar",
+    "Übersicht aller Maschinen im Bereich Spulen, Blatt als PDF im Papier-Aufbau",
+  ],
   "4.12": [
     "Sicherheit: Namen und Bilder aus einer eingelesenen Sicherungsdatei können keinen fremden Code mehr in die App bringen",
     "Ist der Speicher des Geräts voll, sagt die App das jetzt deutlich, statt still nichts zu speichern",

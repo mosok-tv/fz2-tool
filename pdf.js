@@ -488,4 +488,113 @@ function erstmusterPdf(rezept, ersteller, datum, anlage) {
   return doc.bauen();
 }
 
-if (typeof module !== "undefined") module.exports = { erstmusterPdf, PDF_FORMULARE, PdfDoc, anlageZeichnen };
+/* ---------- Blatt WPD-005F1 „Eingesetzte Fertigware DZ" ----------
+   Zeile i trägt Vorzug i (Input) und Spule i (Output) – wie auf dem Papier.
+   Die Abholung macht das Lager: die Spalten bleiben leer zum Ausfüllen von Hand. */
+const FW_FORM = { titel: "Eingesetzte Fertigware DZ", kennung: "WPD-005F1", rev: "Rev. 6 vom 28.06.2023" };
+const FW_SP = [48, 44, 28, 60, 52, 40, 40, 52, 52, 40];  // letzte Spalte (Gesamtgewicht) nimmt den Rest
+FW_SP.push(BREITE - FW_SP.reduce((s, b) => s + b, 0));
+const FW_X = FW_SP.reduce((xs, b) => { xs.push(xs[xs.length - 1] + b); return xs; }, [RAND]);
+const FW_ZH = 16;   // Platz zum Nachtragen von Hand
+
+function fwZahl(n, nk) {
+  const v = Number(n);
+  if (!isFinite(v) || n === null || n === "") return "";
+  const t = v.toFixed(nk).split(".");
+  return t[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".") + (t[1] ? "," + t[1] : "");
+}
+// kg der Vorzüge: Nachkommastellen nur, wenn eingegeben (398,5 bleibt 398,5)
+function fwKg(n) { return fwZahl(n, 2).replace(/,00$/, "").replace(/(,\d)0$/, "$1"); }
+
+function fwZeile(doc, o, h, werte, rechts, fett, fuellung) {
+  doc.rechteck(RAND, o, BREITE, h, fuellung);
+  for (let i = 1; i < FW_SP.length; i++) doc.linie(FW_X[i], o, FW_X[i], o + h);
+  werte.forEach((w, i) => {
+    if (w === "" || w == null) return;
+    const g = 7.4, maxB = FW_SP[i] - 6;
+    const s = String(w);
+    const x = rechts[i] ? Math.max(FW_X[i] + 3, FW_X[i + 1] - 3 - breite(s, g)) : FW_X[i] + 3;
+    doc.textGekuerzt(s, x, o + h / 2 + 2.6, g, maxB, fett);
+  });
+  return o + h;
+}
+
+function fwKopf(doc, info, seite, seiten) {
+  let o = RAND;
+  doc.rechteck(RAND, o, BREITE, 46);
+  doc.linie(RAND + 120, o, RAND + 120, o + 46);
+  doc.linie(RAND + BREITE - 150, o, RAND + BREITE - 150, o + 46);
+  doc.text("Drahtwerk Waidhaus", RAND + 12, o + 28, 10, true);
+  doc.text(FW_FORM.titel, RAND + 150, o + 28, 13, true);
+  doc.text(FW_FORM.kennung, RAND + BREITE - 142, o + 14, 9);
+  doc.text("Seite " + seite + " von " + seiten, RAND + BREITE - 142, o + 29, 9);
+  doc.text(FW_FORM.rev, RAND + BREITE - 142, o + 42, 9);
+  o += 46;
+  // Maschine | Produkt | Auftrags Nr.
+  const h = ZH + 6;
+  doc.rechteck(RAND, o, BREITE, h);
+  doc.linie(RAND + 120, o, RAND + 120, o + h);
+  doc.linie(RAND + BREITE - 150, o, RAND + BREITE - 150, o + h);
+  doc.text("Maschine:", SP_NR, o + 11, 8, true);
+  doc.textGekuerzt(info.maschine || "", SP_NR + 46, o + 11, 9, 66, true);
+  doc.text("Produkt:", RAND + 126, o + 11, 8, true);
+  doc.textGekuerzt(info.produkt || "", RAND + 166, o + 11, 8.5, BREITE - 150 - 176);
+  doc.text("Auftrags Nr.:", RAND + BREITE - 144, o + 11, 8, true);
+  doc.textGekuerzt(info.auftrag || "", RAND + BREITE - 86, o + 11, 9, 80, true);
+  o += h + 6;
+  // Gruppenköpfe: Datum und Pers.-Nr. gehen über beide Kopfzeilen
+  const gh = 12, kh = 14;
+  doc.rechteck(RAND, o, BREITE, gh + kh);
+  doc.rechteck(FW_X[2], o, FW_X[6] - FW_X[2], gh, GRAU);
+  doc.rechteck(FW_X[6], o, FW_X[9] - FW_X[6], gh, GRAU);
+  doc.rechteck(FW_X[9], o, FW_X[11] - FW_X[9], gh, GRAU);
+  doc.text("Input", FW_X[2] + (FW_X[6] - FW_X[2]) / 2 - 10, o + 9, 8, true);
+  doc.text("Output", FW_X[6] + (FW_X[9] - FW_X[6]) / 2 - 13, o + 9, 8, true);
+  doc.text("Abholung", FW_X[9] + (FW_X[11] - FW_X[9]) / 2 - 17, o + 9, 8, true);
+  doc.linie(FW_X[1], o, FW_X[1], o + gh + kh);
+  doc.linie(FW_X[2], o, FW_X[2], o + gh + kh);
+  const koepfe = ["Datum", "Pers. Nr.", "Linie", "Spulen-/Korb-Nr.", "Coilnr.", "kg", "Spulen-Nr.", "Länge [m]", "Gewicht [kg]", "Anzahl", "Gesamtgewicht"];
+  doc.rechteck(FW_X[2], o + gh, BREITE - (FW_X[2] - RAND), kh, HELLGRAU);
+  for (let i = 3; i < FW_SP.length; i++) doc.linie(FW_X[i], o + gh, FW_X[i], o + gh + kh);
+  koepfe.forEach((k, i) => doc.textGekuerzt(k, FW_X[i] + 3, o + (i < 2 ? 16 : gh + 10), 6.8, FW_SP[i] - 5, true));
+  return o + gh + kh;
+}
+
+// info = { maschine, auftrag, produkt }, vorzuege/spulen = Datensätze aus der App
+function fertigwarePdf(info, vorzuege, spulen, ersteller, datum) {
+  const vz = (vorzuege || []).slice(), sp = (spulen || []).slice();
+  const tag = s => String(s || "").split(" ")[0];
+  const zeilen = [];
+  for (let i = 0; i < Math.max(vz.length, sp.length); i++) {
+    const v = vz[i] || {}, s = sp[i] || {};
+    zeilen.push([tag(s.created_at || v.ein_at), s.benutzer || v.benutzer || "",
+      v.linie != null ? v.linie : "", v.korb || "", v.coil || "", fwKg(v.kg),
+      s.nr ? "Sp. " + s.nr : "", fwZahl(s.laenge_m, 0), fwZahl(s.gewicht_kg, 2), "", ""]);
+  }
+  const rechts = [0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1];
+  const kopfH = 46 + ZH + 6 + 6 + 26, fussH = FW_ZH + 22;
+  const proSeite = Math.floor((PdfDoc.SEITE_H - 2 * RAND - kopfH - fussH) / FW_ZH);
+  const seiten = Math.max(1, Math.ceil(zeilen.length / proSeite));
+  const sumKg = vz.reduce((a, v) => a + (Number(v.kg) || 0), 0);
+  const sumL = sp.reduce((a, s) => a + (Number(s.laenge_m) || 0), 0);
+  const sumG = sp.reduce((a, s) => a + (Number(s.gewicht_kg) || 0), 0);
+
+  const doc = new PdfDoc();
+  for (let s = 0; s < seiten; s++) {
+    if (s > 0) doc.neueSeite();
+    let o = fwKopf(doc, info, s + 1, seiten);
+    const teil = zeilen.slice(s * proSeite, (s + 1) * proSeite);
+    // leere Zeilen bis zum Seitenende – das Papier wird von Hand weitergeführt
+    while (teil.length < proSeite) teil.push([]);
+    teil.forEach(z => { o = fwZeile(doc, o, FW_ZH, z, rechts); });
+    if (s === seiten - 1) {
+      o = fwZeile(doc, o, FW_ZH, ["Summe", "", "", "", vz.length + " Vorzüge", fwKg(sumKg),
+        sp.length + " Sp.", fwZahl(sumL, 0), fwZahl(sumG, 2), "", ""], rechts, true, HELLGRAU);
+    }
+    doc.text("Erstellt mit der App Drahtzug" + (datum ? " am " + datum : "") + (ersteller ? " von " + ersteller : "")
+      + " - Abholung trägt das Lager ein.", SP_NR, PdfDoc.SEITE_H - RAND - 4, 7);
+  }
+  return doc.bauen();
+}
+
+if (typeof module !== "undefined") module.exports = { erstmusterPdf, fertigwarePdf, PDF_FORMULARE, PdfDoc, anlageZeichnen };
