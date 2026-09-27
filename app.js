@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "4.14";
+const APP_VERSION = "4.15";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -2796,6 +2796,9 @@ function delSpule(id) {
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "4.15": [
+    "Vorzug mit Tippfehler lässt sich löschen (liegt 30 Tage im Papierkorb)"
+  ],
   "4.14": [
     "Fertigware ohne Auftragsnummer: es zählt nur der aktuelle Lauf seit dem Rüsten",
     "kg der Vorzüge werden so angezeigt, wie sie eingegeben wurden (398,5 statt 399)",
