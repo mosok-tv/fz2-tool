@@ -521,7 +521,8 @@ function fertigwareHtml(m) {
       <tr>${n > 1 ? "<th>Linie</th>" : ""}<th>Korb</th><th>Coilnr.</th><th class="z">kg</th><th></th></tr>
       ${ein.map(v => `<tr>${n > 1 ? `<td>${esc(v.linie)}</td>` : ""}<td>${esc(v.korb)}</td><td>${esc(v.coil)}</td>
         <td class="z">${fwKgText(v.kg)}</td>
-        <td class="z"><button class="btn btn-klein btn-grau" data-vorzug-aus="${esc(v.id)}">aus</button></td></tr>`).join("")}
+        <td class="z"><button class="btn btn-klein btn-grau" data-vorzug-aus="${esc(v.id)}">aus</button>
+          <button class="btn btn-klein btn-grau" data-fw-vorzug-weg="${esc(v.id)}">✕</button></td></tr>`).join("")}
       <tr class="fw-summe"><td colspan="${n > 1 ? 3 : 2}">${ein.length} ${ein.length === 1 ? "Vorzug" : "Vorzüge"}</td><td class="z">${fwKgText(kgIn)}</td><td></td></tr>
     </table>` : `<div class="leer">Noch kein Vorzug eingetragen.</div>`;
   const spl = sp.length ? `<table class="fw-tab">
@@ -647,6 +648,17 @@ function baueFwVorzugAus(id) {
   const v = vorzuege().find(x => x.id === id);
   if (!v || !confirm("Coil " + v.coil + " als ausgebaut ablegen?")) return;
   DB.set("vorzuege", vorzuege().map(x => x.id === id ? Object.assign({}, x, { aus_at: jetzt(), aus_von: wer() }) : x));
+  render();
+}
+
+// Löschen = Eintrag war falsch: wurde dabei ein Vorzug auf derselben Linie ausgebaut, ist er wieder drin
+function loescheFwVorzug(id) {
+  const v = vorzuege().find(x => x.id === id);
+  if (!v || !confirm("Coil " + v.coil + " löschen? Er liegt danach 30 Tage im Papierkorb.")) return;
+  inDenPapierkorb("vorzuege", v, "Coil " + v.coil + " · " + v.machine + " · Linie " + v.linie);
+  DB.set("vorzuege", vorzuege().filter(x => x.id !== id).map(x =>
+    (x.machine === v.machine && Number(x.linie) === Number(v.linie) && x.aus_at && x.aus_at === v.ein_at)
+      ? Object.assign({}, x, { aus_at: null, aus_von: null }) : x));
   render();
 }
 
@@ -2126,7 +2138,7 @@ async function codeEntfernen() {
 
 /* ---------- Papierkorb: Gelöschtes 30 Tage aufheben ---------- */
 const PAPIERKORB_TAGE = 30;
-const PK_ARTEN = { rezepte: "Erstmuster", todos: "Aufgabe", spulen: "Berechnung", fertigspulen: "Fertige Spule" };
+const PK_ARTEN = { rezepte: "Erstmuster", todos: "Aufgabe", spulen: "Berechnung", fertigspulen: "Fertige Spule", vorzuege: "Vorzug" };
 function inDenPapierkorb(art, eintrag, titel) {
   const pk = papierkorb();
   pk.push({ id: neueId(), art: art, titel: titel, daten: eintrag, datum: jetzt(), benutzer: wer() });
@@ -2478,7 +2490,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-blatt],[data-wiz-blatt-zurueck],[data-foto-quelle],[data-blatt-weg],[data-blatt-gross],[data-blatt-lesen],[data-blatt-uebernehmen],[data-blatt-ohne],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-code-fragen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt],[data-import-ersetzen],[data-pk-zurueck],[data-gesehen],[data-kontrolle],[data-kontrolle-zurueck],[data-kontrolle-speichern],[data-pk-weg],[data-such-em],[data-such-spule],[data-such-aufgabe],[data-such-maschine],[data-spule-fertig],[data-vorzug-neu],[data-vorzug-aus],[data-fw-spule-weg],[data-fw-spule-speichern],[data-fw-vorzug-speichern],[data-fw-abbruch],[data-fw-pdf],[data-fw-zur-maschine]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-blatt],[data-wiz-blatt-zurueck],[data-foto-quelle],[data-blatt-weg],[data-blatt-gross],[data-blatt-lesen],[data-blatt-uebernehmen],[data-blatt-ohne],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-code-fragen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt],[data-import-ersetzen],[data-pk-zurueck],[data-gesehen],[data-kontrolle],[data-kontrolle-zurueck],[data-kontrolle-speichern],[data-pk-weg],[data-such-em],[data-such-spule],[data-such-aufgabe],[data-such-maschine],[data-spule-fertig],[data-vorzug-neu],[data-vorzug-aus],[data-fw-vorzug-weg],[data-fw-spule-weg],[data-fw-spule-speichern],[data-fw-vorzug-speichern],[data-fw-abbruch],[data-fw-pdf],[data-fw-zur-maschine]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -2619,6 +2631,7 @@ document.addEventListener("click", e => {
   else if (el.dataset.spuleFertig) { state.fwForm = "spule"; render(); window.scrollTo(0, 0); }
   else if (el.dataset.vorzugNeu) { state.fwForm = "vorzug"; render(); window.scrollTo(0, 0); }
   else if (el.dataset.vorzugAus) baueFwVorzugAus(el.dataset.vorzugAus);
+  else if (el.dataset.fwVorzugWeg) loescheFwVorzug(el.dataset.fwVorzugWeg);
   else if (el.dataset.fwSpuleWeg) loescheFwSpule(el.dataset.fwSpuleWeg);
   else if (el.dataset.fwSpuleSpeichern) speichereFwSpule();
   else if (el.dataset.fwVorzugSpeichern) speichereFwVorzug();

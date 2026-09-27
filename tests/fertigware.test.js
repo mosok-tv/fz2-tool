@@ -86,6 +86,16 @@ module.exports = async function () {
   check("Spule gelöscht", S("fertigspulen").length === 1);
   check("Spule im Papierkorb", S("papierkorb").some(x => x.art === "fertigspulen" && x.daten.nr === "2"));
 
+  // Vorzug mit Tippfehler löschen: der davor ausgebaute Coil ist wieder drin, Papierkorb holt ihn zurück
+  const neu = S("vorzuege").find(v => v.coil === "650200");
+  d.querySelector(`[data-fw-vorzug-weg="${neu.id}"]`).click();
+  check("Vorzug gelöscht", !S("vorzuege").some(v => v.coil === "650200"));
+  check("Vorzug im Papierkorb", S("papierkorb").some(x => x.art === "vorzuege" && x.daten.coil === "650200"));
+  check("vorheriger Coil wieder eingebaut", !S("vorzuege").find(v => v.coil === "650123").aus_at
+    && karte().textContent.indexOf("650123") !== -1);
+  vorzug(1, "K20", "650200", "405");
+  check("nach Neueintrag wieder 2 Vorzüge drin", karte().querySelectorAll(".kachel b")[1].textContent === "2");
+
   // Eingaben werden maskiert
   d.querySelector("[data-vorzug-neu]").click();
   d.getElementById("fw-linie").value = "3";
