@@ -692,5 +692,36 @@ module.exports = async function () {
   d.querySelector('.tipp[data-em-schritt="0"]').click();
   check("Kopfzeile antippen öffnet Schritt 1", d.querySelector(".wschritt-text").textContent === "Schritt 1 von 5");
 
+  // --- Spulen: Auftrag einer gerüsteten Maschine zuweisen ---
+  tab("spulen");
+  check("Maschinen-Auswahl erst mit Auftrag", d.getElementById("sp-maschine-feld").hidden === true);
+  setVal(d.getElementById("sp-auftrag"), "18051");
+  check("mit Auftrag erscheint Läuft auf Maschine", d.getElementById("sp-maschine-feld").hidden === false);
+  const optZ49 = d.querySelector('#sp-maschine option[value="Z49"]');
+  check("gerüstete Maschine mit Draht und bisherigem Auftrag", !optZ49.disabled && optZ49.textContent === "Z49 · VSW 6x0,050 (bisher 18034)");
+  const optZ83 = d.querySelector('#sp-maschine option[value="Z83"]');
+  check("nicht gerüstete Maschine ist gesperrt", optZ83.disabled && optZ83.textContent === "Z83 (nicht gerüstet)");
+  d.getElementById("sp-maschine").value = "Z49";
+  setVal(d.getElementById("sp-g"), "1,15");
+  setVal(d.querySelector(".vz"), "300");
+  setVal(d.getElementById("sp-nspulen"), "10");
+  const spAnzahl = S("spulen").length;
+  let frage3 = "";
+  w.confirm = t => { frage3 = t; return false; };
+  d.querySelector("[data-save-spule]").click();
+  check("Rückfrage vor dem Umstellen", frage3 === "Z49 läuft bisher auf Auftrag 18034.\n\nAuf 18051 umstellen?");
+  check("Abbrechen speichert nichts", S("spulen").length === spAnzahl && S("laufend").Z49.auftrag === "18034");
+  w.confirm = () => true;
+  d.querySelector("[data-save-spule]").click();
+  check("Umstellen speichert die Berechnung", S("spulen").length === spAnzahl + 1);
+  check("Z49 läuft jetzt auf 18051", S("laufend").Z49.auftrag === "18051");
+  check("alte Berechnung behält ihren Auftrag", S("spulen").some(x => x.auftrag === "18034"));
+  const neueSp = S("spulen").find(x => x.auftrag === "18051");
+  d.querySelector('[data-edit-spule="' + neueSp.id + '"]').click();
+  check("Bearbeiten zeigt die zugewiesene Maschine", d.getElementById("sp-maschine").value === "Z49"
+    && d.getElementById("sp-maschine-feld").hidden === false);
+  setVal(d.getElementById("sp-auftrag"), "");
+  check("ohne Auftrag verschwindet die Auswahl wieder", d.getElementById("sp-maschine-feld").hidden === true);
+
   return check.ergebnis();
 };

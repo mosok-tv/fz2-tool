@@ -790,12 +790,22 @@ function renderSpulen() {
   const vzFelder = Array.from({ length: 8 }, (_, i) =>
     `<div><div class="label">VZ ${i + 1}</div><input type="text" class="vz num" inputmode="decimal" placeholder="kg"></div>`).join("");
   const liste = spulenListeHtml();
+  const lauf = laufend();
 
   inhalt.innerHTML = `
     ${fertigwareUebersichtHtml()}
     <div class="karte">
       <div class="label">Auftragsnummer (optional)</div>
       <input type="text" id="sp-auftrag" placeholder="z. B. 18034" maxlength="50">
+      <div id="sp-maschine-feld" hidden style="margin-top:6px">
+        <div class="label">Läuft auf Maschine</div>
+        <select id="sp-maschine">
+          <option value="">– keiner Maschine zuweisen –</option>
+          ${maschinen().map(m => { const l = lauf[m]; return l
+            ? `<option value="${esc(m)}">${esc(m)} · ${esc(drahtName(l))}${l.auftrag ? ` (bisher ${esc(l.auftrag)})` : ""}</option>`
+            : `<option value="${esc(m)}" disabled>${esc(m)} (nicht gerüstet)</option>`; }).join("")}
+        </select>
+      </div>
       <div class="label">Metergewicht G (kg/km) – von der QS-Prüfkarte</div>
       <div class="schmal"><input type="text" id="sp-g" class="num" inputmode="decimal" placeholder="z. B. 1,15"></div>
       <div class="hinweis" id="sp-g-hint"></div>
@@ -960,8 +970,15 @@ function speichereSpule() {
   const gesamt = spModus === "kleinster" ? Math.min(...vzNetto) * vzNetto.length : summe;
   const eg = gesamt * faktor / 100;
   const auftragsmenge = spVal("sp-auftragsmenge");
+  const auftrag = document.getElementById("sp-auftrag").value.trim().slice(0, 50);
+  // Auftrag einer gerüsteten Maschine zuweisen – ein anderer Auftrag dort wird nur nach Rückfrage ersetzt
+  const mWahl = document.getElementById("sp-maschine");
+  const m = auftrag && mWahl ? mWahl.value : "";
+  const lauf = laufend();
+  if (m && lauf[m] && lauf[m].auftrag && lauf[m].auftrag !== auftrag
+      && !confirm(`${m} läuft bisher auf Auftrag ${lauf[m].auftrag}.\n\nAuf ${auftrag} umstellen?`)) return;
   const eintrag = {
-    id: neueId(), auftrag: document.getElementById("sp-auftrag").value.trim().slice(0, 50),
+    id: neueId(), auftrag: auftrag,
     metergewicht: G, vz_gewichte: vz, anzahl_vz: vz.length, gesamtmasse: gesamt,
     modus: spModus, summe_alle: summe, faktor: faktor,
     abzug_je_vz: spAbzug, auftragsmenge: auftragsmenge > 0 ? auftragsmenge : null,
@@ -972,7 +989,14 @@ function speichereSpule() {
   let list = spulen();
   if (spEditId) { list = list.filter(s => s.id !== spEditId); spEditId = null; }  // Bearbeitung ersetzt den alten Eintrag
   list.push(eintrag); DB.set("spulen", list);
+  if (m && lauf[m] && lauf[m].auftrag !== auftrag) { lauf[m].auftrag = auftrag; DB.set("laufend", lauf); }
   flash("Berechnung gespeichert."); render(); window.scrollTo(0, 0);
+}
+
+// „Läuft auf Maschine" erst, wenn es einen Auftrag gibt
+function spMaschineZeigen() {
+  const feld = document.getElementById("sp-maschine-feld");
+  if (feld) feld.hidden = !document.getElementById("sp-auftrag").value.trim();
 }
 
 function deStr(n) { return String(n).replace(".", ","); }
@@ -983,6 +1007,9 @@ function editSpule(id) {
   spEditId = id;
   spModus = e.modus || "summe";
   document.getElementById("sp-auftrag").value = e.auftrag || "";
+  const lauf = laufend();
+  document.getElementById("sp-maschine").value = (e.auftrag && Object.keys(lauf).find(m => lauf[m].auftrag === e.auftrag)) || "";
+  spMaschineZeigen();
   document.getElementById("sp-g").value = deStr(e.metergewicht);
   document.getElementById("sp-faktor").value = deStr(e.faktor);
   document.getElementById("sp-nspulen").value = String(e.anzahl_spulen);
@@ -2755,6 +2782,7 @@ document.addEventListener("input", e => {
   if (e.target.dataset && e.target.dataset.ist) { setzeIst(e.target.dataset.ist, e.target.value); return; }
   // nur rechnen, wenn die Spulen-Maske wirklich auf dem Bildschirm ist
   // (sonst z. B. beim Tippen im Fehler-Formular über der Spulen-Ansicht)
+  if (e.target.id === "sp-auftrag") spMaschineZeigen();
   if (!state.overlay && e.target.closest("#inhalt") && state.view === "spulen") spRechne();
 });
 
