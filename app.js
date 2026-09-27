@@ -1258,6 +1258,13 @@ function wizStart(id) {
   }
 }
 
+// Formular des zuletzt angelegten Musters auf dieser Maschine – Vorschlag für das nächste
+function formularVonMaschine(m, ohneId) {
+  if (!m) return "";
+  const r = rezepte().filter(x => x.maschine === m && x.id !== ohneId).pop();
+  return !r ? "" : FORMULARE[r.formular] ? r.formular : STANDARD_FORMULAR;
+}
+
 function renderRezeptForm() {
   if (!wiz) wizStart(state.rezeptForm);
   if (wiz.phase === "vorlage") return renderWizVorlage();
@@ -1337,6 +1344,9 @@ function renderWizSchritt() {
   if (s === 0) {
     gruppenName = "Draht-Typ";
     const st = wiz.stamm;
+    // alte, frei eingetippte Maschine bleibt wählbar, auch wenn sie nicht in der Liste steht
+    const maschinenWahl = maschinen().concat(st.maschine && maschinen().indexOf(st.maschine) === -1 ? [st.maschine] : []);
+    const bisher = formularVonMaschine(st.maschine, state.rezeptForm);
     inhaltHtml = `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div><label>Kurzbezeichnung</label><input type="text" class="wiz-stamm" data-stamm="kuerzel" value="${esc(st.kuerzel)}" placeholder="z. B. VSW"></div>
@@ -1344,11 +1354,15 @@ function renderWizSchritt() {
       </div>
       <label>Klartext</label><input type="text" class="wiz-stamm" data-stamm="klartext" value="${esc(st.klartext)}" placeholder="z. B. versilbert weich">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div><label>Maschine</label><input type="text" class="wiz-stamm" data-stamm="maschine" value="${esc(st.maschine)}" placeholder="z. B. Z49"></div>
+        <div><label>Maschine</label><select class="wiz-stamm" data-stamm="maschine">
+          <option value="">– keine feste Maschine –</option>
+          ${maschinenWahl.map(m => `<option value="${esc(m)}" ${st.maschine === m ? "selected" : ""}>${esc(m)}</option>`).join("")}
+        </select></div>
         <div><label>Auftrag</label><input type="text" class="wiz-stamm" data-stamm="beispiel_auftrag" value="${esc(st.beispiel_auftrag)}"></div>
       </div>
       <div class="label" style="margin-top:12px">Erstmuster-Formular</div>
       <p class="hinweis" style="margin-top:0">Bestimmt, welche Werte in den nächsten Schritten abgefragt werden.</p>
+      ${bisher && bisher === wiz.formular ? `<div class="vorschlag">✓ wie bisher auf ${esc(st.maschine)}</div>` : ""}
       ${Object.keys(FORMULARE).map(k => `<button type="button" class="formwahl ${wiz.formular === k ? "aktiv" : ""}" data-formular="${k}">
         ${esc(FORMULARE[k].name)}<small>${esc(FORMULARE[k].beschreibung)}</small></button>`).join("")}`;
   } else {
@@ -2710,7 +2724,15 @@ document.addEventListener("input", e => {
     if (f) f.grund = e.target.value;
     return;
   }
-  if (e.target.dataset && e.target.dataset.stamm && wiz) { wiz.stamm[e.target.dataset.stamm] = e.target.value; return; }
+  if (e.target.dataset && e.target.dataset.stamm && wiz) {
+    wiz.stamm[e.target.dataset.stamm] = e.target.value;
+    if (e.target.dataset.stamm === "maschine") {
+      const f = formularVonMaschine(e.target.value, state.rezeptForm);
+      if (f) wiz.formular = f;
+      render();
+    }
+    return;
+  }
   if (e.target.classList && e.target.classList.contains("wiz-eigen") && wiz) { wiz.werte[e.target.dataset.feld] = e.target.value; return; }
   if (e.target.dataset && e.target.dataset.ist) { setzeIst(e.target.dataset.ist, e.target.value); return; }
   // nur rechnen, wenn die Spulen-Maske wirklich auf dem Bildschirm ist

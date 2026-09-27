@@ -128,6 +128,7 @@ module.exports = async function () {
   d.querySelector("[data-rezept-neu]").click();
   check("Neues Muster öffnet gleich Schritt 1", d.querySelector(".wschritt-text").textContent === "Schritt 1 von 5");
   check("ohne vorhandene Muster kein Knopf für Vorlage", d.querySelector("[data-wiz-vorlage]") === null);
+  check("Maschine ist eine Auswahl", d.querySelector('.wiz-stamm[data-stamm="maschine"]').tagName === "SELECT");
   check("Assistent: 5 Schritte", d.querySelectorAll(".wpunkt").length === 5);
   const stamm = o => Object.keys(o).forEach(k => {
     const el = d.querySelector(`.wiz-stamm[data-stamm="${k}"]`);
@@ -638,7 +639,7 @@ module.exports = async function () {
   check("Suche ohne Treffer sagt das",
     d.getElementById("such-ergebnis").textContent.indexOf("Nichts gefunden") !== -1);
 
-  // --- Neues Muster: Vorlage oben ---
+  // --- Neues Muster: Vorlage oben, Maschine schlägt das Formular vor ---
   tab("erstmuster");
   d.querySelector("[data-rezept-neu]").click();
   check("mit vorhandenen Mustern: Knopf Werte übernehmen", d.querySelector("[data-wiz-vorlage]") !== null);
@@ -646,6 +647,13 @@ module.exports = async function () {
   check("Vorlage-Seite offen", d.getElementById("kopf-titel").textContent === "Vorlage wählen");
   d.querySelector("[data-wiz-zurueck-start]").click();
   check("Zurück führt in Schritt 1", d.querySelector(".wschritt-text").textContent === "Schritt 1 von 5");
+  d.querySelector('.formwahl[data-formular="1341"]').click();
+  setVal(d.querySelector('.wiz-stamm[data-stamm="maschine"]'), "Z49");
+  check("Maschine setzt das Formular von zuletzt", d.querySelector('.formwahl[data-formular="1350"]').classList.contains("aktiv"));
+  check("Hinweis wie bisher", d.querySelector(".vorschlag") && d.querySelector(".vorschlag").textContent === "✓ wie bisher auf Z49");
+  d.querySelector('.formwahl[data-formular="1341"]').click();
+  check("Formular bleibt änderbar, Hinweis verschwindet", d.querySelector('.formwahl[data-formular="1341"]').classList.contains("aktiv")
+    && d.querySelector(".vorschlag") === null);
   d.querySelector("[data-wiz-zurueck]").click();
   check("Zurück in Schritt 1 verlässt den Assistenten", d.querySelector(".wschritt-text") === null);
 
