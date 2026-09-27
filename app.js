@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "4.15";
+const APP_VERSION = "4.16";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -2805,6 +2805,13 @@ function delSpule(id) {
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "4.16": [
+    "Nach „Rüstung abschließen“ geht es direkt zur Maschine, sie steht dann auf Produktion",
+    "Rückfrage, wenn beim Rüsten noch nicht alles abgehakt ist",
+    "Neuer Eintrag steht bei der Maschine gleich oben, nach dem Speichern geht es zurück zur Übersicht",
+    "Erstmuster-Assistent: ohne bekannte Werte gleich das Eingabefeld",
+    "Gewählter Status ist wieder farbig statt weiß"
+  ],
   "4.15": [
     "Vorzug mit Tippfehler lässt sich löschen (liegt 30 Tage im Papierkorb)"
   ],
