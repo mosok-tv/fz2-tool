@@ -510,6 +510,8 @@ function fwSumme(liste, feld) { return liste.reduce((s, x) => s + (Number(x[feld
 function fwNaechsteNr(m, a) {
   return String(fwSpulen(m, a).reduce((n, s) => Math.max(n, parseInt(String(s.nr).replace(/\D/g, ""), 10) || 0), 0) + 1);
 }
+// kg wie eingegeben: 412 bleibt 412, 398,5 bleibt 398,5
+function fwKgText(n) { return (Number(n) || 0).toLocaleString("de-DE", { maximumFractionDigits: 2 }); }
 function fwAuftragText(a) { return a ? "Auftrag " + a : "ohne Auftragsnummer"; }
 
 function fertigwareHtml(m) {
@@ -518,9 +520,9 @@ function fertigwareHtml(m) {
   const vz = ein.length ? `<table class="fw-tab">
       <tr>${n > 1 ? "<th>Linie</th>" : ""}<th>Korb</th><th>Coilnr.</th><th class="z">kg</th><th></th></tr>
       ${ein.map(v => `<tr>${n > 1 ? `<td>${esc(v.linie)}</td>` : ""}<td>${esc(v.korb)}</td><td>${esc(v.coil)}</td>
-        <td class="z">${fmt(Number(v.kg) || 0, 0)}</td>
+        <td class="z">${fwKgText(v.kg)}</td>
         <td class="z"><button class="btn btn-klein btn-grau" data-vorzug-aus="${esc(v.id)}">aus</button></td></tr>`).join("")}
-      <tr class="fw-summe"><td colspan="${n > 1 ? 3 : 2}">${ein.length} ${ein.length === 1 ? "Vorzug" : "Vorzüge"}</td><td class="z">${fmt(kgIn, 0)}</td><td></td></tr>
+      <tr class="fw-summe"><td colspan="${n > 1 ? 3 : 2}">${ein.length} ${ein.length === 1 ? "Vorzug" : "Vorzüge"}</td><td class="z">${fwKgText(kgIn)}</td><td></td></tr>
     </table>` : `<div class="leer">Noch kein Vorzug eingetragen.</div>`;
   const spl = sp.length ? `<table class="fw-tab">
       <tr><th>Spule</th><th class="z">Länge m</th><th class="z">kg</th><th></th></tr>
@@ -543,7 +545,7 @@ function fertigwareHtml(m) {
       <div class="kachel-reihe">
         <div class="kachel"><b>${sp.length}</b><span>Spulen fertig</span></div>
         <div class="kachel"><b>${ein.length}</b><span>Vorzüge drin</span></div>
-        <div class="kachel"><b>${fmt(kgIn, 0)}</b><span>kg Input</span></div>
+        <div class="kachel"><b>${fwKgText(kgIn)}</b><span>kg Input</span></div>
       </div>
       <div class="lauf-kopf" style="margin:16px 0 6px">Eingebaute Vorzüge</div>
       ${vz}

@@ -40,7 +40,7 @@ module.exports = async function () {
   check("zwei Vorzüge gespeichert", S("vorzuege").length === 2);
   check("Vorzug trägt Auftrag und Benutzer", S("vorzuege")[0].auftrag === "18034" && S("vorzuege")[0].benutzer === "güntzel");
   check("Kachel zeigt 2 Vorzüge drin", karte().querySelectorAll(".kachel b")[1].textContent === "2");
-  check("Input-Summe 811 kg", karte().querySelectorAll(".kachel b")[2].textContent === "811");
+  check("Input-Summe 810,5 kg wie eingegeben", karte().querySelectorAll(".kachel b")[2].textContent === "810,5");
   check("Linie-Spalte bei 6 Linien", karte().innerHTML.indexOf("<th>Linie</th>") !== -1);
 
   // Wechsel auf Linie 1: alter Vorzug gilt als ausgebaut, bleibt aber gespeichert
