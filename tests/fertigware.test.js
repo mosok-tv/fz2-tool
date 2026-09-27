@@ -140,6 +140,21 @@ module.exports = async function () {
   check("Z67-Vorzug auf Linie 1", S("vorzuege").some(v => v.machine === "Z67" && v.linie === 1));
   check("Z67 ohne Auftrag beschriftet", karte().textContent.indexOf("ohne Auftragsnummer") !== -1);
 
+  // ohne Auftragsnummer zählt nur der aktuelle Lauf – alte Läufe mischen sich nicht hinein
+  const v2 = JSON.parse(w.localStorage.getItem("sue_vault"));
+  v2.laufend = { Z67: { kuerzel: "CuSn", aufbau: "1x0,10", seit: "25.09.2026 06:00", benutzer: "güntzel" } };
+  v2.fertigspulen = [
+    { id: "alt-1", machine: "Z67", auftrag: "", nr: "1", gewicht_kg: 100, created_at: "01.08.2026 10:00" },
+    { id: "alt-2", machine: "Z67", auftrag: "", nr: "2", gewicht_kg: 100, created_at: "01.08.2026 12:00" },
+    { id: "neu-1", machine: "Z67", auftrag: "", nr: "1", gewicht_kg: 250, created_at: "25.09.2026 07:00" }];
+  const w2 = starteApp(v2);
+  await warte(80);
+  w2.document.querySelector('[data-maschine="Z67"]').click();
+  const k2 = w2.document.querySelector(".fw-karte");
+  check("ohne Auftrag: nur Spulen seit dem Rüsten", k2.querySelectorAll(".kachel b")[0].textContent === "1");
+  w2.document.querySelector("[data-spule-fertig]").click();
+  check("ohne Auftrag: Nummer zählt im Lauf weiter", w2.document.getElementById("fw-nr").value === "2");
+
   // --- PDF im Aufbau von WPD-005F1 ---
   const echtesBlob = global.Blob;
   global.Blob = class { constructor(teile) { this.teile = teile; } };

@@ -487,7 +487,12 @@ function laufendHtml(m) {
    Je Maschine und Auftrag: welche Vorzüge eingebaut sind (Input) und welche Spulen fertig wurden (Output).
    Die Abholung macht das Lager – sie bleibt in der App weg und steht im PDF nur als leere Spalte. */
 function fwAuftrag(m) { const l = laufend()[m]; return (l && l.auftrag) ? String(l.auftrag) : ""; }
-function fwSpulen(m, a) { return fertigspulen().filter(s => s.machine === m && String(s.auftrag || "") === a); }
+// Läuft die Maschine ohne Auftragsnummer, zählt nur der aktuelle Lauf seit dem Rüsten – sonst mischen sich alte Läufe hinein
+function fwAb(m, a) { const l = laufend()[m]; return (!a && l && !l.auftrag) ? zeitWert(l.seit) : 0; }
+function fwSpulen(m, a) {
+  const ab = fwAb(m, a);
+  return fertigspulen().filter(s => s.machine === m && String(s.auftrag || "") === a && zeitWert(s.created_at) >= ab);
+}
 function fwEingebaut(m) {
   return vorzuege().filter(v => v.machine === m && !v.aus_at)
     .sort((x, y) => (Number(x.linie) || 0) - (Number(y.linie) || 0));
@@ -496,7 +501,8 @@ function fwEingebaut(m) {
 function fwVorzuegeFuer(m, a) {
   const zeiten = fwSpulen(m, a).map(s => zeitWert(s.created_at));
   const von = Math.min.apply(null, zeiten), bis = Math.max.apply(null, zeiten);
-  return vorzuege().filter(v => v.machine === m && (String(v.auftrag || "") === a
+  const ab = fwAb(m, a);
+  return vorzuege().filter(v => v.machine === m && ((String(v.auftrag || "") === a && zeitWert(v.ein_at) >= ab)
     || (zeiten.length && zeitWert(v.ein_at) <= bis && (!v.aus_at || zeitWert(v.aus_at) >= von))));
 }
 function fwSumme(liste, feld) { return liste.reduce((s, x) => s + (Number(x[feld]) || 0), 0); }
