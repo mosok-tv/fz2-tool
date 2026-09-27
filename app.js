@@ -441,7 +441,6 @@ function renderMaschineDetail() {
   inhalt.innerHTML = `
     <button class="btn btn-grau btn-klein" data-zurueck="1">‹ Zurück</button>
     ${laufendHtml(m)}
-    ${fertigwareHtml(m)}
     <div class="karte" style="margin-top:12px">
       <h2>Neuer Eintrag für ${esc(m)}</h2>
       <div class="label">Status</div>
@@ -453,6 +452,7 @@ function renderMaschineDetail() {
       <textarea id="notiz" placeholder="z. B. Drahtriss an Kopf 3"></textarea>
       <button class="btn" data-speichern-eintrag="1" style="margin-top:12px">Eintrag speichern</button>
     </div>
+    ${fertigwareHtml(m)}
     <div class="karte"><h2>Verlauf</h2>${histHtml}</div>`;
 }
 
@@ -2773,7 +2773,7 @@ function speichereEintrag() {
   const sw = document.getElementById("eintrag-schicht");
   list.push({ id: neueId(), machine: state.maschine, status: st, note: note,
               schicht: sw ? sw.value : schichtJetzt(), benutzer: wer(), created_at: jetzt() });
-  DB.set("entries", list); flash("Eintrag gespeichert."); render(); window.scrollTo(0, 0);
+  DB.set("entries", list); state.maschine = null; flash("Eintrag gespeichert."); render(); window.scrollTo(0, 0);
 }
 function addTodo() {
   const text = document.getElementById("todo-text").value.trim();

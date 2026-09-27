@@ -14,9 +14,14 @@ module.exports = async function () {
   check("6 Maschinen-Kacheln", d.querySelectorAll(".kopf-kachel").length === 6);
   d.querySelector('[data-maschine="Z49"]').click();
   check("5 Status-Optionen", d.querySelectorAll(".status-opt").length === 5);
+  const ein = d.getElementById("inhalt").innerHTML;
+  check("Neuer Eintrag steht über der Fertigware",
+    ein.indexOf("Neuer Eintrag für") !== -1 && ein.indexOf("Neuer Eintrag für") < ein.indexOf("Fertigware"));
   d.querySelector('[data-status="drahtriss"]').click();
   d.getElementById("notiz").value = "Riss an Kopf 3";
   d.querySelector("[data-speichern-eintrag]").click();
+  check("nach dem Speichern zurück zur Übersicht", d.querySelector(".kopf-kachel") !== null
+    && d.getElementById("notiz") === null);
   check("Eintrag gespeichert", S("entries")[0].machine === "Z49" && S("entries")[0].status === "drahtriss");
   check("Eintrag trägt den Benutzer", S("entries")[0].benutzer === "güntzel");
   check("Eintrag bekommt eine Schicht", ["frueh", "spaet", "nacht"].indexOf(S("entries")[0].schicht) !== -1);
