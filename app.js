@@ -2191,6 +2191,16 @@ function sauberMaschinen(liste) {
     .map(x => x.replace(/[<>"'&\x00-\x1f]/g, "").trim().slice(0, 20))
     .filter(Boolean);
 }
+// Linienzahl je Maschine aus einer Sicherung: nur bekannte Maschinennamen und ganze Zahlen 1–12
+function sauberLinien(o) {
+  const r = {};
+  if (!o || typeof o !== "object" || Array.isArray(o)) return r;
+  sauberMaschinen(Object.keys(o)).forEach(m => {
+    const n = Number(o[m]);
+    if (Object.prototype.hasOwnProperty.call(o, m) && m !== "__proto__" && Number.isInteger(n) && n >= 1 && n <= 12) r[m] = n;
+  });
+  return r;
+}
 function fuehreZusammen(d) {
   let neu = 0, akt = 0;
   ["entries", "todos", "spulen", "rezepte", "ruestungen", "notloesungen", "vorzuege", "fertigspulen"].forEach(k => {
@@ -2211,7 +2221,7 @@ function fuehreZusammen(d) {
     });
     DB.set("laufend", l);
   }
-  if (d.linien && typeof d.linien === "object") DB.set("linien", Object.assign(DB.get("linien", {}) || {}, d.linien));
+  if (d.linien) DB.set("linien", Object.assign(sauberLinien(d.linien), DB.get("linien", {}) || {}));  // eigene Einstellung gewinnt
   return { neu: neu, aktualisiert: akt };
 }
 
@@ -2248,7 +2258,7 @@ function importData(ersetzen) {
           .forEach(k => { if (Array.isArray(d[k])) DB.set(k, d[k]); });
         if (Array.isArray(d.maschinen)) DB.set("maschinen", sauberMaschinen(d.maschinen));
         if (d.laufend && typeof d.laufend === "object") DB.set("laufend", d.laufend);
-        if (d.linien && typeof d.linien === "object") DB.set("linien", d.linien);
+        if (d.linien) DB.set("linien", sauberLinien(d.linien));
         flash("Sicherung eingelesen.");
       } else {
         const e = fuehreZusammen(d);

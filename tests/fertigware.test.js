@@ -119,6 +119,17 @@ module.exports = async function () {
   check("Sicherung enthält Vorzüge, Spulen und Linien",
     Array.isArray(daten.vorzuege) && daten.vorzuege.length === 4 && daten.fertigspulen.length === 1 && daten.linien.Z83 === 6);
 
+  // Linien aus fremder Sicherung: eigene Einstellung gewinnt, Unsinn fällt weg
+  const fremd = new w.File(['{"version":1,"linien":{"Z83":2,"Z84":7,"Z85":99,"Z86":"x","__proto__":{"Z67":5}}}'], "s.json", { type: "application/json" });
+  const imp = d.getElementById("import-file");
+  Object.defineProperty(imp, "files", { value: [fremd], configurable: true });
+  d.querySelector("[data-import]").click();
+  await warte(120);
+  const li = S("linien");
+  check("Import: eigene Linienzahl bleibt", li.Z83 === 6);
+  check("Import: neue Maschine übernommen", li.Z84 === 7);
+  check("Import: ungültige Linienzahlen fallen weg", !("Z85" in li) && !("Z86" in li) && li.Z67 === undefined);
+
   // Einzelzieh-Maschine: keine Linienauswahl
   werkzeuge(w).tab("maschinen");
   oeffne("Z67");
