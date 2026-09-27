@@ -41,6 +41,9 @@ module.exports = async function () {
   // 3) Die Rüst-Zeile darf nicht die Maße des Statuspunkts erben
   check("Rüst-Zeile heißt .rpunkt (nicht .punkt)", app.indexOf('class="rpunkt ') !== -1 && app.indexOf('class="punkt ${st') === -1);
   check(".rpunkt setzt eigene Maße", /\.rpunkt\s*\{[^}]*width:\s*auto/.test(css));
+  // gewählter Status bekommt bg-<farbe>; ein weißer Grund in .status-opt überdeckte sie (weiß auf weiß)
+  check("gewählter Status wird nicht weiß überdeckt",
+    !/\.status-opt\s*\{[^}]*background/.test(css) && /\.status-opt:not\(\.aktiv\)\s*\{[^}]*background/.test(css));
 
   return check.ergebnis();
 };

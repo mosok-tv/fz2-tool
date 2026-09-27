@@ -167,8 +167,11 @@ button { font-family: inherit; cursor: pointer; }
 /* Status-Auswahl */
 .status-wahl { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 6px 0; }
 .status-opt { border: 2px solid var(--linie); border-radius: 9px; padding: 12px; font-size: .95rem;
-  font-weight: 600; background: #fff; text-align: left; }
+  font-weight: 600; text-align: left; }
+/* weiß nur, solange nicht gewählt – sonst überdeckt es die Statusfarbe (bg-…) */
+.status-opt:not(.aktiv) { background: #fff; }
 .status-opt.aktiv { color: #fff; border-color: transparent; }
+.status-opt.aktiv .punkt { background: #fff; }
 
 /* Historie / Listen */
 .eintrag { padding: 11px 0; border-bottom: 1px solid #eceff2; }
