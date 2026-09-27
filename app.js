@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "4.13";
+const APP_VERSION = "4.14";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -2783,6 +2783,11 @@ function delSpule(id) {
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "4.14": [
+    "Fertigware ohne Auftragsnummer: es zählt nur der aktuelle Lauf seit dem Rüsten",
+    "kg der Vorzüge werden so angezeigt, wie sie eingegeben wurden (398,5 statt 399)",
+    "Sicherheit: Linienzahl aus Sicherungsdateien wird geprüft, eigene Einstellung bleibt erhalten"
+  ],
   "4.13": [
     "Neu: Blatt „Eingesetzte Fertigware DZ“ (WPD-005F1) an jeder Maschine – eingebaute Vorzüge und fertige Spulen je Auftrag eintragen",
     "Spulen-Nummer (Sp. 1, Sp. 2 …) wird vorgeschlagen, Linienzahl je Maschine einstellbar",
