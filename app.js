@@ -1881,8 +1881,11 @@ function ruestAbschluss(id) {
   const wahl = document.getElementById("ruest-maschine");
   const maschine = wahl ? wahl.value : (r.maschine || "");
   const soll = r.soll || {}, status = r.ruest_status || {};
+  const felder = formularFelder(r.formular).filter(f => !f.angabe && soll[f.name] != null && soll[f.name] !== "");
+  const ok = felder.filter(f => status[f.name] && status[f.name].erledigt).length;
+  if (ok < felder.length && !confirm("Erst " + ok + " von " + felder.length + " abgehakt – trotzdem abschließen?")) return;
   const ist = {}, abweichungen = [];
-  formularFelder(r.formular).filter(f => !f.angabe && soll[f.name] != null && soll[f.name] !== "").forEach(f => {
+  felder.forEach(f => {
     const st = status[f.name] || {};
     ist[f.name] = { soll: soll[f.name], wert: st.ist || "", erledigt: !!st.erledigt };
     const gefahren = String(st.ist || "").trim();
@@ -1903,6 +1906,12 @@ function ruestAbschluss(id) {
                        auftrag: r.beispiel_auftrag || "", formular: r.formular,
                        ist: ist, seit: zeit, benutzer: wer() };
     DB.set("laufend", lauf);
+    // frisch gerüstet heißt: die Maschine produziert – alter Status (z. B. Drahtriss) gilt nicht mehr
+    const el = entries();
+    el.push({ id: neueId(), machine: maschine, status: "produktion", note: "gerüstet: " + drahtName(lauf[maschine]),
+              schicht: schichtJetzt(), benutzer: wer(), created_at: zeit });
+    DB.set("entries", el);
+    zeige("maschinen"); state.maschine = maschine;
   }
   flash(maschine ? "Gerüstet – läuft jetzt auf " + maschine + "." : "Rüstung im Verlauf gespeichert.");
   // Wich ein Wert vom Erstmuster ab? Dann gleich klären, ob das der neue Stand ist

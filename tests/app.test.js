@@ -163,8 +163,17 @@ module.exports = async function () {
   setVal(ist, "17,5");
   check("Ist-Wert gespeichert", JSON.stringify(S("rezepte")[0].ruest_status).indexOf("17,5") !== -1);
   check("Maschinen-Auswahl steht auf Z49", d.getElementById("ruest-maschine").value === "Z49");
+  let frage = "";
+  w.confirm = t => { frage = t; return false; };
+  d.querySelector("[data-ruest-abschluss]").click();
+  check("halb abgehakt: Rückfrage vor dem Abschließen", frage === "Erst 1 von 2 abgehakt – trotzdem abschließen?");
+  check("Abbrechen schließt nicht ab", (S("ruestungen") || []).length === 0);
+  w.confirm = () => true;
   d.querySelector("[data-ruest-abschluss]").click();
   check("Rüstung im Verlauf", S("ruestungen").length === 1 && S("ruestungen")[0].benutzer === "güntzel");
+  const letzter = S("entries").filter(e => e.machine === "Z49").pop();
+  check("nach dem Rüsten steht Z49 auf Produktion", letzter.status === "produktion"
+    && letzter.note === "gerüstet: VSW 6x0,050");
 
   // --- Abweichung: Ist 17,5 statt Soll 18 -> Notlösung mit Grund ---
   check("Abweichung wird abgefragt", d.querySelectorAll(".abw-zeile").length === 1);
@@ -181,6 +190,8 @@ module.exports = async function () {
   check("Notlösung merkt sich die Maschine", S("notloesungen")[0].maschine === "Z49");
   check("Sollwert bleibt unverändert", S("rezepte")[0].soll["Ziehgeschwindigkeit"] === "18");
   check("Notlösung erzeugt keinen neuen Stand", (S("rezepte")[0].historie || []).length === 0);
+  check("nach dem Rüsten direkt bei der Maschine", d.getElementById("kopf-titel").textContent === "Z49"
+    && d.querySelector(".karte.laufend") !== null);
 
   tab("ruesten");
   d.querySelector("[data-rezept]").click();
@@ -237,10 +248,14 @@ module.exports = async function () {
   // --- Zweite Rüstung: laufende Kennwerte und Vergleich ---
   tab("ruesten");
   d.querySelector("[data-rezept]").click();
-  d.querySelectorAll(".rpunkt").forEach(p => p.click());
+  for (let i = 0; i < d.querySelectorAll(".rpunkt").length; i++) d.querySelectorAll(".rpunkt")[i].click();
   setVal(d.querySelectorAll(".p-ist")[0], "18,5");   // Geschwindigkeit rauf
   setVal(d.querySelectorAll(".p-ist")[1], "1,20");   // Glühfaktor gleich wie beim ersten Mal
+  let gefragt = false;
+  w.confirm = () => { gefragt = true; return true; };
   d.querySelector("[data-ruest-abschluss]").click();
+  w.confirm = () => true;
+  check("alles abgehakt: keine Rückfrage", !gefragt);
   check("zweite Rüstung gespeichert", S("ruestungen").length === 2);
   d.querySelector("[data-abw-notloesung]").click();
   d.querySelector("[data-abw-ohne-grund]").click();
