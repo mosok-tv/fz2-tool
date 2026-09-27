@@ -126,7 +126,8 @@ module.exports = async function () {
   // --- Erstmuster: Assistent; Rüsten: Checkliste ---
   tab("erstmuster");
   d.querySelector("[data-rezept-neu]").click();
-  d.querySelector("[data-wiz-leer]").click();
+  check("Neues Muster öffnet gleich Schritt 1", d.querySelector(".wschritt-text").textContent === "Schritt 1 von 5");
+  check("ohne vorhandene Muster kein Knopf für Vorlage", d.querySelector("[data-wiz-vorlage]") === null);
   check("Assistent: 5 Schritte", d.querySelectorAll(".wpunkt").length === 5);
   const stamm = o => Object.keys(o).forEach(k => {
     const el = d.querySelector(`.wiz-stamm[data-stamm="${k}"]`);
@@ -415,7 +416,6 @@ module.exports = async function () {
   // --- Erstmuster-Formulare: Auswahl bestimmt die abgefragten Werte ---
   tab("erstmuster");
   d.querySelector("[data-rezept-neu]").click();
-  d.querySelector("[data-wiz-leer]").click();
   check("drei Formulare zur Auswahl", d.querySelectorAll(".formwahl").length === 3);
   check("Standard ist 1350", d.querySelector('.formwahl[data-formular="1350"]').classList.contains("aktiv"));
   // 1341 hat nur einen Ziehen-Wert, 1350 hat elf
@@ -445,7 +445,6 @@ module.exports = async function () {
   // --- Vorschlagsknöpfe: übliche Werte, aber alles überschreibbar ---
   tab("erstmuster");
   d.querySelector("[data-rezept-neu]").click();
-  d.querySelector("[data-wiz-leer]").click();
   stamm({ kuerzel: "DROP", aufbau: "1x1" });
   weiter(); weiter(); weiter(); weiter();      // -> Spuler
   check("Verlegung: Knopf Hand vorhanden", d.querySelector('[data-wiz-wert="Verlegung Hand/Automatik"][data-wert="Hand"]') !== null);
@@ -638,6 +637,17 @@ module.exports = async function () {
   setVal(d.getElementById("alle-suche"), "gibtsnichtxyz");
   check("Suche ohne Treffer sagt das",
     d.getElementById("such-ergebnis").textContent.indexOf("Nichts gefunden") !== -1);
+
+  // --- Neues Muster: Vorlage oben ---
+  tab("erstmuster");
+  d.querySelector("[data-rezept-neu]").click();
+  check("mit vorhandenen Mustern: Knopf Werte übernehmen", d.querySelector("[data-wiz-vorlage]") !== null);
+  d.querySelector("[data-wiz-vorlage]").click();
+  check("Vorlage-Seite offen", d.getElementById("kopf-titel").textContent === "Vorlage wählen");
+  d.querySelector("[data-wiz-zurueck-start]").click();
+  check("Zurück führt in Schritt 1", d.querySelector(".wschritt-text").textContent === "Schritt 1 von 5");
+  d.querySelector("[data-wiz-zurueck]").click();
+  check("Zurück in Schritt 1 verlässt den Assistenten", d.querySelector(".wschritt-text") === null);
 
   return check.ergebnis();
 };

@@ -1244,11 +1244,11 @@ function leseBlatt(text, formularId, werte, stamm) {
 }
 
 /* Assistent zum Anlegen/Ändern eines Musters – Schritt für Schritt, Werte antippen statt tippen */
-let wiz = null;   // { phase: "start"|"vorlage"|"blatt"|"schritte", schritt, werte:{}, stamm:{} }
+let wiz = null;   // { phase: "vorlage"|"blatt"|"schritte", schritt, werte:{}, stamm:{} }
 
 function wizStart(id) {
   if (id === "neu") {
-    wiz = { phase: "start", schritt: 0, werte: {}, stamm: {}, formular: STANDARD_FORMULAR, blatt: "" };
+    wiz = { phase: "schritte", schritt: 0, werte: {}, stamm: {}, formular: STANDARD_FORMULAR, blatt: "" };
   } else {
     const r = rezepte().find(x => x.id === id) || {};
     wiz = { phase: "schritte", schritt: 0, werte: Object.assign({}, r.soll || {}),
@@ -1260,26 +1260,9 @@ function wizStart(id) {
 
 function renderRezeptForm() {
   if (!wiz) wizStart(state.rezeptForm);
-  if (wiz.phase === "start") return renderWizStart();
   if (wiz.phase === "vorlage") return renderWizVorlage();
   if (wiz.phase === "blatt") return renderWizBlatt();
   return renderWizSchritt();
-}
-
-function renderWizStart() {
-  titel.textContent = "Neues Muster";
-  const gibtVorlagen = rezepte().length > 0;
-  inhalt.innerHTML = `
-    <button class="btn btn-grau btn-klein" data-rezept-zurueck="1">‹ Zurück</button>
-    <div class="karte" style="margin-top:12px">
-      <h2>Wie möchtest du anfangen?</h2>
-      ${gibtVorlagen ? `<button class="grossbtn" data-wiz-vorlage="1">Wie ein vorhandenes Muster
-        <small>Alles wird übernommen – du änderst nur, was anders ist.</small></button>` : ""}
-      <button class="grossbtn" data-wiz-blatt="1">Vom Blatt abfotografieren
-        <small>Foto vom Papier – die App trägt die erkannten Werte ein.</small></button>
-      <button class="grossbtn" data-wiz-leer="1">Ganz neu anlegen
-        <small>${gibtVorlagen ? "Nur nötig, wenn es nichts Ähnliches gibt." : "Das erste Muster anlegen."}</small></button>
-    </div>`;
 }
 
 /* Foto vom Papier-Blatt und der davon erkannte Text */
@@ -1398,6 +1381,8 @@ function renderWizSchritt() {
     : `<div class="karte blatt-karte">
          <div class="blatt-zeile"><span class="meta">Werte stehen auf Papier?</span>
            <button class="btn btn-klein btn-grau" data-wiz-blatt="1">Vom Blatt abfotografieren</button></div>
+         ${state.rezeptForm === "neu" && rezepte().length ? `<div class="blatt-zeile"><span class="meta">Gibt es ein ähnliches Muster?</span>
+           <button class="btn btn-klein btn-grau" data-wiz-vorlage="1">Werte übernehmen</button></div>` : ""}
        </div>`;
   inhalt.innerHTML = `
     ${blattKarte}
@@ -1441,7 +1426,6 @@ function blattUebernehmen() {
 
 function wizZurueck() {
   if (wiz.schritt > 0) { wiz.schritt--; render(); window.scrollTo(0, 0); }
-  else if (state.rezeptForm === "neu") { wiz.phase = "start"; render(); window.scrollTo(0, 0); }
   else { wiz = null; state.rezeptForm = null; render(); window.scrollTo(0, 0); }
 }
 
@@ -2499,7 +2483,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-leer],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-blatt],[data-wiz-blatt-zurueck],[data-foto-quelle],[data-blatt-weg],[data-blatt-gross],[data-blatt-lesen],[data-blatt-uebernehmen],[data-blatt-ohne],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-code-fragen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt],[data-import-ersetzen],[data-pk-zurueck],[data-gesehen],[data-kontrolle],[data-kontrolle-zurueck],[data-kontrolle-speichern],[data-pk-weg],[data-such-em],[data-such-spule],[data-such-aufgabe],[data-such-maschine],[data-spule-fertig],[data-vorzug-neu],[data-vorzug-aus],[data-fw-vorzug-weg],[data-fw-spule-weg],[data-fw-spule-speichern],[data-fw-vorzug-speichern],[data-fw-abbruch],[data-fw-pdf],[data-fw-zur-maschine]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-bearbeiten],[data-formular],[data-wiz-vorlage],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-blatt],[data-wiz-blatt-zurueck],[data-foto-quelle],[data-blatt-weg],[data-blatt-gross],[data-blatt-lesen],[data-blatt-uebernehmen],[data-blatt-ohne],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-code-fragen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt],[data-import-ersetzen],[data-pk-zurueck],[data-gesehen],[data-kontrolle],[data-kontrolle-zurueck],[data-kontrolle-speichern],[data-pk-weg],[data-such-em],[data-such-spule],[data-such-aufgabe],[data-such-maschine],[data-spule-fertig],[data-vorzug-neu],[data-vorzug-aus],[data-fw-vorzug-weg],[data-fw-spule-weg],[data-fw-spule-speichern],[data-fw-vorzug-speichern],[data-fw-abbruch],[data-fw-pdf],[data-fw-zur-maschine]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -2523,8 +2507,7 @@ document.addEventListener("click", e => {
   else if (el.dataset.delSpule) delSpule(el.dataset.delSpule);
   else if (el.dataset.rezeptNeu) { zeige("erstmuster"); state.rezeptForm = "neu"; wizStart("neu"); render(); window.scrollTo(0, 0); }
   else if (el.dataset.wizVorlage) { wiz.phase = "vorlage"; render(); window.scrollTo(0, 0); }
-  else if (el.dataset.wizLeer) { wiz.phase = "schritte"; wiz.schritt = 0; render(); window.scrollTo(0, 0); }
-  else if (el.dataset.wizZurueckStart) { wiz.phase = "start"; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.wizZurueckStart) { wiz.phase = "schritte"; render(); window.scrollTo(0, 0); }
   else if (el.dataset.wizKopie) {
     const q = rezepte().find(x => x.id === el.dataset.wizKopie);
     if (q) {
@@ -2536,7 +2519,7 @@ document.addEventListener("click", e => {
     wiz.phase = "schritte"; wiz.schritt = 0; render(); window.scrollTo(0, 0);
   }
   else if (el.dataset.wizBlatt) { wiz.vorBlatt = wiz.phase; wiz.phase = "blatt"; render(); window.scrollTo(0, 0); }
-  else if (el.dataset.wizBlattZurueck) { wiz.phase = wiz.vorBlatt || "start"; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.wizBlattZurueck) { wiz.phase = wiz.vorBlatt || "schritte"; render(); window.scrollTo(0, 0); }
   else if (el.dataset.blattOhne) { wiz.phase = "schritte"; wiz.schritt = 0; render(); window.scrollTo(0, 0); }
   else if (el.dataset.fotoQuelle) {
     const i = document.getElementById(el.dataset.fotoQuelle);
