@@ -1379,8 +1379,8 @@ function renderWizSchritt() {
       const eigener = (gewaehlt && vorschlaege.indexOf(gewaehlt) === -1) ? gewaehlt : "";
       return `<div class="wfeld">
         <div class="wfrage">${esc(f.name)} ${f.einheit ? `<span class="weinheit">(${f.einheit})</span>` : ""}</div>
-        <div class="wchips">${chips}<button type="button" class="wchip anderer" data-wiz-eigen="${idx}">anderer Wert…</button></div>
-        <div class="weigen ${eigener ? "zeigen" : ""}" id="weigen-${idx}">
+        ${vorschlaege.length ? `<div class="wchips">${chips}<button type="button" class="wchip anderer" data-wiz-eigen="${idx}">anderer Wert…</button></div>` : ""}
+        <div class="weigen ${eigener || !vorschlaege.length ? "zeigen" : ""}" id="weigen-${idx}">
           <input type="text" inputmode="decimal" class="wiz-eigen" data-feld="${esc(f.name)}" value="${esc(eigener)}" placeholder="Wert eintippen">
         </div>
       </div>`;

@@ -136,6 +136,12 @@ module.exports = async function () {
   const weiter = () => d.querySelector("[data-wiz-weiter]").click();
   stamm({ kuerzel: "VSW", aufbau: "6x0,050", klartext: "versilbert weich", maschine: "Z49", beispiel_auftrag: "18034" });
   weiter(); weiter();                       // -> Ziehen
+  const ohneWerte = Array.from(d.querySelectorAll(".wfeld")).filter(f => !f.querySelector("[data-wiz-wert]"));
+  check("ohne bekannte Werte ist das Eingabefeld gleich offen", ohneWerte.length > 0
+    && ohneWerte.every(f => f.querySelector(".weigen.zeigen") && !f.querySelector("[data-wiz-eigen]")));
+  check("mit bekannten Werten bleibt der Knopf anderer Wert",
+    Array.from(d.querySelectorAll(".wfeld")).filter(f => f.querySelector("[data-wiz-wert]"))
+      .every(f => f.querySelector("[data-wiz-eigen]")));
   wizWert("Ziehgeschwindigkeit", "18");
   weiter();                                 // -> Glühe
   wizWert("Glühfaktor", "1,20");
