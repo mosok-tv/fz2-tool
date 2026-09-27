@@ -188,6 +188,9 @@ button { font-family: inherit; cursor: pointer; }
 .zeile > span:first-child { flex-shrink: 1; min-width: 0; }
 .zeile .w { font-size: 1.1rem; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .zeile.haupt .w { font-size: 1.35rem; color: var(--green); }
+/* Muster-Ansicht: Wert antippen führt in den passenden Schritt */
+.tipp { cursor: pointer; }
+.tipp .stift { color: var(--blau); font-size: .85rem; margin-left: 6px; }
 .vorschlag { font-size: .8rem; color: var(--green); font-weight: 600; margin: 4px 0 6px; }
 .einheit { font-size: .8rem; color: var(--grau); font-weight: 400; margin-left: 3px; }
 .vz-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }

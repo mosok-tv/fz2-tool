@@ -678,5 +678,19 @@ module.exports = async function () {
   check("Werte eintragen öffnet den Assistenten bei den Werten", d.getElementById("kopf-titel").textContent === "Muster ändern"
     && d.querySelector(".wschritt-text").textContent === "Schritt 2 von 5");
 
+  // --- Wert antippen führt direkt in den passenden Schritt ---
+  tab("erstmuster");
+  const vsw = S("rezepte").find(r => r.kuerzel === "VSW");
+  d.querySelector('[data-em="' + vsw.id + '"]').click();
+  check("Hinweis Wert antippen", d.getElementById("inhalt").textContent.indexOf("Wert antippen zum Ändern") !== -1);
+  const glueh = Array.from(d.querySelectorAll(".zeile.tipp")).find(z => z.textContent.indexOf("Glühfaktor") !== -1);
+  glueh.click();
+  check("Glühfaktor antippen öffnet Schritt 4 (Glühe)", d.querySelector(".wschritt-text").textContent === "Schritt 4 von 5"
+    && d.querySelector('[data-feld="Glühfaktor"]') !== null);
+  for (let i = 0; i < 4; i++) d.querySelector("[data-wiz-zurueck]").click();
+  check("Zurück landet wieder beim Muster", d.getElementById("kopf-titel").textContent.indexOf("VSW") === 0);
+  d.querySelector('.tipp[data-em-schritt="0"]').click();
+  check("Kopfzeile antippen öffnet Schritt 1", d.querySelector(".wschritt-text").textContent === "Schritt 1 von 5");
+
   return check.ergebnis();
 };

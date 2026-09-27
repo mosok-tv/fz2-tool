@@ -1063,8 +1063,11 @@ function renderErstmusterDetail() {
   const soll = r.soll || {};
   const felder = formularFelder(r.formular).filter(f => !f.angabe && soll[f.name]);
   const angaben = formularFelder(r.formular).filter(f => f.angabe && soll[f.name]);
+  // Antippen führt direkt in den Schritt, in dem der Wert steht (Schritt 0 = Draht-Typ)
+  const gruppen = formularGruppen(r.formular);
+  const schrittVon = name => gruppen.findIndex(g => g.felder.some(f => f.name === name)) + 1;
   const werte = felder.length
-    ? felder.map(f => `<div class="zeile"><span>${esc(f.name)}</span><span><span class="w">${esc(soll[f.name])}</span>${f.einheit ? `<span class="einheit">${esc(f.einheit)}</span>` : ""}</span></div>`).join("")
+    ? `<p class="hinweis" style="margin-top:0">Wert antippen zum Ändern</p>` + felder.map(f => `<div class="zeile tipp" data-em-schritt="${schrittVon(f.name)}"><span>${esc(f.name)}</span><span><span class="w">${esc(soll[f.name])}</span>${f.einheit ? `<span class="einheit">${esc(f.einheit)}</span>` : ""}<span class="stift">✎</span></span></div>`).join("")
     : `<div class="leer">Noch keine Werte eingetragen.</div>`;
   const anlage = anlageDaten(r);
   const nl = anlage.notloesungen;
@@ -1080,7 +1083,7 @@ function renderErstmusterDetail() {
   inhalt.innerHTML = `
     <button class="btn btn-grau btn-klein" data-em-zurueck="1">‹ Zurück</button>
     <div class="karte" style="margin-top:12px">
-      <div class="meta">${esc(r.klartext || "")}${r.maschine ? " · " + esc(r.maschine) : ""}${r.beispiel_auftrag ? " · Auftrag " + esc(r.beispiel_auftrag) : ""}</div>
+      <div class="meta tipp" data-em-schritt="0">${esc(r.klartext || "")}${r.maschine ? " · " + esc(r.maschine) : ""}${r.beispiel_auftrag ? " · Auftrag " + esc(r.beispiel_auftrag) : ""} <span class="stift">✎</span></div>
       <div style="margin-top:6px"><b>Formular:</b> ${esc(formularName(r.formular))}</div>
       <div style="margin-top:6px">${versandBadge(r)}</div>
       <div class="meta">angelegt ${esc(r.created_at || "")}${r.geaendert_am && r.geaendert_am !== r.created_at ? " · geändert " + esc(r.geaendert_am) : ""}${r.benutzer ? " · " + esc(r.benutzer) : ""}</div>
@@ -2504,7 +2507,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-bearbeiten],[data-werte-eintragen],[data-formular],[data-wiz-vorlage],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-blatt],[data-wiz-blatt-zurueck],[data-foto-quelle],[data-blatt-weg],[data-blatt-gross],[data-blatt-lesen],[data-blatt-uebernehmen],[data-blatt-ohne],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-code-fragen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt],[data-import-ersetzen],[data-pk-zurueck],[data-gesehen],[data-kontrolle],[data-kontrolle-zurueck],[data-kontrolle-speichern],[data-pk-weg],[data-such-em],[data-such-spule],[data-such-aufgabe],[data-such-maschine],[data-spule-fertig],[data-vorzug-neu],[data-vorzug-aus],[data-fw-vorzug-weg],[data-fw-spule-weg],[data-fw-spule-speichern],[data-fw-vorzug-speichern],[data-fw-abbruch],[data-fw-pdf],[data-fw-zur-maschine]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-bearbeiten],[data-werte-eintragen],[data-em-schritt],[data-formular],[data-wiz-vorlage],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-blatt],[data-wiz-blatt-zurueck],[data-foto-quelle],[data-blatt-weg],[data-blatt-gross],[data-blatt-lesen],[data-blatt-uebernehmen],[data-blatt-ohne],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-code-fragen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt],[data-import-ersetzen],[data-pk-zurueck],[data-gesehen],[data-kontrolle],[data-kontrolle-zurueck],[data-kontrolle-speichern],[data-pk-weg],[data-such-em],[data-such-spule],[data-such-aufgabe],[data-such-maschine],[data-spule-fertig],[data-vorzug-neu],[data-vorzug-aus],[data-fw-vorzug-weg],[data-fw-spule-weg],[data-fw-spule-speichern],[data-fw-vorzug-speichern],[data-fw-abbruch],[data-fw-pdf],[data-fw-zur-maschine]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -2580,6 +2583,10 @@ document.addEventListener("click", e => {
   }
   // gilt für den Assistenten und für die Rüst-Checkliste – beide zurück zur Liste
   else if (el.dataset.rezeptZurueck) { state.rezeptForm = null; wiz = null; state.verlauf = null; state.rezept = null; render(); window.scrollTo(0, 0); }
+  else if (el.dataset.emSchritt) {
+    state.rezeptForm = state.emDetail; wizStart(state.emDetail); wiz.schritt = parseInt(el.dataset.emSchritt, 10) || 0;
+    render(); window.scrollTo(0, 0);
+  }
   else if (el.dataset.werteEintragen) {
     const id = el.dataset.werteEintragen;
     zeige("erstmuster"); state.rezeptForm = id; state.emDetail = id; wizStart(id); wiz.schritt = 1; render(); window.scrollTo(0, 0);
