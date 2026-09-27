@@ -657,5 +657,26 @@ module.exports = async function () {
   d.querySelector("[data-wiz-zurueck]").click();
   check("Zurück in Schritt 1 verlässt den Assistenten", d.querySelector(".wschritt-text") === null);
 
+  // --- Muster ohne Werte: Rückfrage, beim Rüsten Knopf zur Eingabe ---
+  const anzahl = S("rezepte").length;
+  d.querySelector("[data-rezept-neu]").click();
+  setVal(d.querySelector('.wiz-stamm[data-stamm="kuerzel"]'), "LEER");
+  let frage2 = "";
+  w.confirm = t => { frage2 = t; return false; };
+  for (let i = 0; i < 5; i++) d.querySelector("[data-wiz-weiter]").click();
+  check("ohne Werte: Rückfrage beim Speichern", frage2.indexOf("Noch kein Wert eingetragen") !== -1);
+  check("Abbrechen speichert nicht und führt zur ersten Wertegruppe", S("rezepte").length === anzahl
+    && d.querySelector(".wschritt-text").textContent === "Schritt 2 von 5");
+  w.confirm = () => true;
+  for (let i = 0; i < 4; i++) d.querySelector("[data-wiz-weiter]").click();
+  const leer = S("rezepte").find(r => r.kuerzel === "LEER");
+  check("trotzdem speichern geht", !!leer);
+  tab("ruesten");
+  d.querySelector('[data-rezept="' + leer.id + '"]').click();
+  check("Rüsten ohne Werte sagt das", d.getElementById("inhalt").textContent.indexOf("noch keine Werte hinterlegt") !== -1);
+  d.querySelector("[data-werte-eintragen]").click();
+  check("Werte eintragen öffnet den Assistenten bei den Werten", d.getElementById("kopf-titel").textContent === "Muster ändern"
+    && d.querySelector(".wschritt-text").textContent === "Schritt 2 von 5");
+
   return check.ergebnis();
 };
