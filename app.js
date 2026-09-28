@@ -480,7 +480,8 @@ function laufendHtml(m) {
     <div class="lauf-kopf">Derzeit laufend</div>
     ${auftrag ? `<div class="lauf-text">Auftrag ${esc(auftrag)}</div>` : ""}
     <div class="leer">${auftrag ? "Noch nichts" : "Nichts"} gerüstet. Nach „Rüstung abschließen" im Bereich Rüsten steht hier, was läuft.</div>
-    ${berechnungZumAuftrag(auftrag)}</div>`;
+    ${berechnungZumAuftrag(auftrag)}
+    ${auftrag ? `<div style="margin-top:12px"><button class="btn btn-klein btn-grau" data-auftrag-fertig="${esc(m)}">Auftrag fertig</button></div>` : ""}</div>`;
   const werte = kennwerte(l.formular, l.ist).map(k =>
     `<div class="v-zeile"><span>${esc(k.label)}</span><span><b>${esc(k.wert)}</b>${k.einheit ? ` <span class="einheit">${esc(k.einheit)}</span>` : ""}${k.nurSoll ? ' <span class="meta">(Soll)</span>' : ""}</span></div>`).join("");
   const vergleichbar = ruestungenVon(l.rezept_id).length > 1;
@@ -497,6 +498,7 @@ function laufendHtml(m) {
         <button class="btn btn-klein" data-kontrolle="${esc(m)}">Werte prüfen</button>
         ${vergleichbar ? `<button class="btn btn-klein btn-grau" data-rvergleich="${esc(l.rezept_id)}">Werte vergleichen</button>` : ""}
         <button class="btn btn-klein btn-grau" data-laufend-ende="${esc(m)}">Läuft nicht mehr</button>
+        ${auftrag ? `<button class="btn btn-klein btn-grau" data-auftrag-fertig="${esc(m)}">Auftrag fertig</button>` : ""}
       </div>
     </div>`;
 }
@@ -505,8 +507,12 @@ function laufendHtml(m) {
    Je Maschine und Auftrag: welche Vorzüge eingebaut sind (Input) und welche Spulen fertig wurden (Output).
    Die Abholung macht das Lager – sie bleibt in der App weg und steht im PDF nur als leere Spalte. */
 function fwAuftrag(m) { return maschinenAuftrag(m); }
-// Läuft die Maschine ohne Auftragsnummer, zählt nur der aktuelle Lauf seit dem Rüsten – sonst mischen sich alte Läufe hinein
-function fwAb(m, a) { const l = laufend()[m]; return (!a && l && !l.auftrag) ? zeitWert(l.seit) : 0; }
+// Läuft die Maschine ohne Auftragsnummer, zählt nur der aktuelle Lauf seit dem Rüsten bzw. seit „Auftrag fertig" – sonst mischen sich alte Läufe hinein
+function fwAb(m, a) {
+  if (a) return 0;
+  const l = laufend()[m], x = auftraege()[m];
+  return Math.max(l && !l.auftrag ? zeitWert(l.seit) : 0, x && !x.auftrag ? zeitWert(x.seit) : 0);
+}
 function fwSpulen(m, a) {
   const ab = fwAb(m, a);
   return fertigspulen().filter(s => s.machine === m && String(s.auftrag || "") === a && zeitWert(s.created_at) >= ab);
@@ -2561,7 +2567,7 @@ document.getElementById("tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab"); if (t) zeige(t.dataset.view);
 });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-bearbeiten],[data-werte-eintragen],[data-em-schritt],[data-formular],[data-wiz-vorlage],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-blatt],[data-wiz-blatt-zurueck],[data-foto-quelle],[data-blatt-weg],[data-blatt-gross],[data-blatt-lesen],[data-blatt-uebernehmen],[data-blatt-ohne],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-code-fragen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt],[data-import-ersetzen],[data-pk-zurueck],[data-gesehen],[data-kontrolle],[data-kontrolle-zurueck],[data-kontrolle-speichern],[data-pk-weg],[data-such-em],[data-such-spule],[data-such-aufgabe],[data-such-maschine],[data-spule-fertig],[data-vorzug-neu],[data-vorzug-aus],[data-fw-vorzug-weg],[data-fw-spule-weg],[data-fw-spule-speichern],[data-fw-vorzug-speichern],[data-fw-abbruch],[data-fw-pdf],[data-fw-zur-maschine]");
+  const el = e.target.closest("[data-maschine],[data-zurueck],[data-status],[data-speichern-eintrag],[data-add-todo],[data-toggle-todo],[data-del-todo],[data-modus],[data-abzug],[data-save-spule],[data-edit-spule],[data-del-spule],[data-g-uebernehmen],[data-rezept-neu],[data-rezept],[data-em],[data-em-zurueck],[data-em-loeschen],[data-rezept-zurueck],[data-rezept-bearbeiten],[data-werte-eintragen],[data-em-schritt],[data-formular],[data-wiz-vorlage],[data-wiz-kopie],[data-wiz-zurueck-start],[data-wiz-blatt],[data-wiz-blatt-zurueck],[data-foto-quelle],[data-blatt-weg],[data-blatt-gross],[data-blatt-lesen],[data-blatt-uebernehmen],[data-blatt-ohne],[data-wiz-weiter],[data-wiz-zurueck],[data-wiz-wert],[data-wiz-eigen],[data-verlauf],[data-verlauf-zurueck],[data-vergleich],[data-vergleich-zurueck],[data-check],[data-ruest-abschluss],[data-erstmuster],[data-export],[data-import],[data-fehler-zurueck],[data-fehler-senden],[data-fehler-teilen],[data-fehler-kopieren],[data-fehler-loeschen],[data-wochenbericht],[data-code-setzen],[data-code-aendern],[data-code-entfernen],[data-code-fragen],[data-grossschrift],[data-abmelden],[data-benutzer-neu],[data-pw-aendern],[data-benutzer-loeschen],[data-maschine-neu],[data-maschine-loeschen],[data-laufend-ende],[data-auftrag-fertig],[data-rvergleich],[data-rv-zurueck],[data-rv-alle],[data-abw-uebernehmen],[data-abw-notloesung],[data-abw-speichern],[data-abw-ohne-grund],[data-nl-erledigt],[data-import-ersetzen],[data-pk-zurueck],[data-gesehen],[data-kontrolle],[data-kontrolle-zurueck],[data-kontrolle-speichern],[data-pk-weg],[data-such-em],[data-such-spule],[data-such-aufgabe],[data-such-maschine],[data-spule-fertig],[data-vorzug-neu],[data-vorzug-aus],[data-fw-vorzug-weg],[data-fw-spule-weg],[data-fw-spule-speichern],[data-fw-vorzug-speichern],[data-fw-abbruch],[data-fw-pdf],[data-fw-zur-maschine]");
   if (!el) return;
   if (el.dataset.maschine) { state.maschine = el.dataset.maschine; render(); window.scrollTo(0, 0); }
   else if (el.dataset.zurueck) { state.maschine = null; render(); }
@@ -2741,6 +2747,12 @@ document.addEventListener("click", e => {
     if (auftrag && !auftraege()[n]) setzeMaschinenAuftrag(n, auftrag);
     const lauf = laufend(); delete lauf[n]; DB.set("laufend", lauf);
     flash("Eintrag entfernt."); render();
+  }
+  else if (el.dataset.auftragFertig) {
+    const n = el.dataset.auftragFertig, auftrag = maschinenAuftrag(n);
+    if (!auftrag || !confirm("Auftrag " + auftrag + " auf " + n + " fertig?\n\nBerechnung und Fertigware bleiben gespeichert. Das PDF findest du danach unter „Frühere Aufträge“.")) return;
+    setzeMaschinenAuftrag(n, "");  // leer = kein Auftrag; das nächste Rüsten nimmt wieder die Nummer aus dem Muster
+    flash("Auftrag " + auftrag + " fertig."); render();
   }
   else if (el.dataset.grossschrift) {
     const an = !DB.get("grossschrift", false);

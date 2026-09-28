@@ -759,5 +759,25 @@ module.exports = async function () {
   rueste("Z78");
   check("ohne Auftrag nimmt Rüsten den aus dem Muster", S("laufend").Z78.auftrag === "18034" && S("auftraege").Z78.auftrag === "18034");
 
+  // --- Auftrag fertig ---
+  const oeffne = m => { tab("maschinen"); d.querySelector('[data-maschine="' + m + '"]').click(); };
+  oeffne("Z49");
+  let frage5 = "";
+  w.confirm = t => { frage5 = t; return false; };
+  d.querySelector('[data-auftrag-fertig="Z49"]').click();
+  check("Auftrag fertig fragt nach", frage5.indexOf("Auftrag 18051 auf Z49 fertig?") === 0);
+  check("Abbrechen lässt den Auftrag stehen", S("auftraege").Z49.auftrag === "18051");
+  w.confirm = () => true;
+  d.querySelector('[data-auftrag-fertig="Z49"]').click();
+  check("Auftrag fertig löst den Auftrag, die Rüstung bleibt", S("auftraege").Z49.auftrag === "" && S("laufend").Z49 && S("laufend").Z49.auftrag === "");
+  check("Karte ohne Auftrag und ohne Knopf", d.querySelector(".karte.laufend").textContent.indexOf("Auftrag 18051") === -1
+    && !d.querySelector("[data-auftrag-fertig]"));
+  check("Fertigware läuft ohne Auftragsnummer weiter", d.querySelector(".fw-karte h2").textContent === "Fertigware · ohne Auftragsnummer");
+  oeffne("Z83");
+  d.querySelector('[data-auftrag-fertig="Z83"]').click();
+  check("Auftrag fertig auch ohne Rüstung", S("auftraege").Z83.auftrag === "" && d.querySelector(".karte.laufend").textContent.indexOf("Auftrag 18060") === -1);
+  rueste("Z49");
+  check("nach Auftrag fertig nimmt Rüsten wieder den aus dem Muster", S("laufend").Z49.auftrag === "18034");
+
   return check.ergebnis();
 };
