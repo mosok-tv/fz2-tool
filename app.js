@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "4.18";
+const APP_VERSION = "4.19";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -2898,6 +2898,9 @@ function delSpule(id) {
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "4.19": [
+    "Maschine: Knopf „Auftrag fertig“ – löst den Auftrag, Fertigware und PDF bleiben unter „Frühere Aufträge“"
+  ],
   "4.18": [
     "Spulen: Auftrag jeder Maschine zuweisen, auch wenn sie nicht gerüstet ist",
     "Der Auftrag bleibt an der Maschine – beim Rüsten und nach „Läuft nicht mehr“"
