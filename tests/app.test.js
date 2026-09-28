@@ -700,7 +700,7 @@ module.exports = async function () {
   const optZ49 = d.querySelector('#sp-maschine option[value="Z49"]');
   check("gerüstete Maschine mit Draht und bisherigem Auftrag", !optZ49.disabled && optZ49.textContent === "Z49 · VSW 6x0,050 (bisher 18034)");
   const optZ83 = d.querySelector('#sp-maschine option[value="Z83"]');
-  check("nicht gerüstete Maschine ist gesperrt", optZ83.disabled && optZ83.textContent === "Z83 (nicht gerüstet)");
+  check("nicht gerüstete Maschine ist wählbar", !optZ83.disabled && optZ83.textContent === "Z83 · nicht gerüstet");
   d.getElementById("sp-maschine").value = "Z49";
   setVal(d.getElementById("sp-g"), "1,15");
   setVal(d.querySelector(".vz"), "300");
@@ -722,6 +722,42 @@ module.exports = async function () {
     && d.getElementById("sp-maschine-feld").hidden === false);
   setVal(d.getElementById("sp-auftrag"), "");
   check("ohne Auftrag verschwindet die Auswahl wieder", d.getElementById("sp-maschine-feld").hidden === true);
+
+  // --- Auftrag einer Maschine zuweisen, ohne sie vorher zu rüsten ---
+  tab("spulen");
+  setVal(d.getElementById("sp-auftrag"), "18060");
+  d.getElementById("sp-maschine").value = "Z83";
+  setVal(d.getElementById("sp-g"), "1,15");
+  setVal(d.querySelector(".vz"), "300");
+  setVal(d.getElementById("sp-nspulen"), "10");
+  let frage4 = "";
+  w.confirm = t => { frage4 = t; return true; };
+  d.querySelector("[data-save-spule]").click();
+  check("ohne bisherigen Auftrag keine Rückfrage", frage4 === "");
+  check("Z83 hat Auftrag 18060, ohne gerüstet zu sein", S("auftraege").Z83.auftrag === "18060" && !S("laufend").Z83);
+  check("Liste zeigt läuft auf Z83", d.getElementById("inhalt").textContent.indexOf("läuft auf Z83") !== -1);
+  check("Auswahl zeigt den Auftrag bei Z83", d.querySelector('#sp-maschine option[value="Z83"]').textContent === "Z83 · nicht gerüstet (bisher 18060)");
+  tab("maschinen");
+  d.querySelector('[data-maschine="Z83"]').click();
+  const z83 = d.querySelector(".karte.laufend").textContent;
+  check("Maschine zeigt den Auftrag ohne Rüstung", z83.indexOf("Auftrag 18060") !== -1 && z83.indexOf("Noch nichts gerüstet") !== -1
+    && d.querySelector(".karte.laufend .lauf-auftrag") !== null);
+  d.querySelector("[data-zurueck]").click();
+  d.querySelector('[data-maschine="Z49"]').click();
+  d.querySelector("[data-laufend-ende]").click();
+  check("Läuft nicht mehr: Auftrag bleibt an der Maschine", !S("laufend").Z49 && S("auftraege").Z49.auftrag === "18051");
+  check("Z49 zeigt den Auftrag weiter", d.querySelector(".karte.laufend").textContent.indexOf("Auftrag 18051") !== -1);
+  d.querySelector("[data-zurueck]").click();
+  const rueste = m => {
+    tab("ruesten");
+    Array.from(d.querySelectorAll("[data-rezept]")).find(x => x.textContent.indexOf("VSW") !== -1).click();
+    d.getElementById("ruest-maschine").value = m;
+    d.querySelector("[data-ruest-abschluss]").click();
+  };
+  rueste("Z49");
+  check("Rüsten behält den zugewiesenen Auftrag statt dem aus dem Muster", S("laufend").Z49.auftrag === "18051");
+  rueste("Z78");
+  check("ohne Auftrag nimmt Rüsten den aus dem Muster", S("laufend").Z78.auftrag === "18034" && S("auftraege").Z78.auftrag === "18034");
 
   return check.ergebnis();
 };

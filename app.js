@@ -107,6 +107,22 @@ function wer() { return DB.get("angemeldet", "") || ""; }
 function maschinen() { const m = DB.get("maschinen", null); return Array.isArray(m) ? m : MASCHINEN_STANDARD.slice(); }
 // Was gerade auf einer Maschine läuft: { "Z49": { kuerzel, aufbau, ... } }
 function laufend() { const l = DB.get("laufend", null); return (l && typeof l === "object") ? l : {}; }
+// Auftrag je Maschine – unabhängig vom Rüsten: { "Z49": { auftrag, seit, benutzer } }
+function auftraege() { const a = DB.get("auftraege", null); return (a && typeof a === "object") ? a : {}; }
+// ältere Daten kennen den Auftrag nur aus „laufend"
+function maschinenAuftrag(m) {
+  const a = auftraege()[m];
+  if (a) return String(a.auftrag || "");
+  const l = laufend()[m];
+  return (l && l.auftrag) ? String(l.auftrag) : "";
+}
+function setzeMaschinenAuftrag(m, auftrag) {
+  const a = auftraege();
+  a[m] = { auftrag: auftrag, seit: jetzt(), benutzer: wer() };
+  DB.set("auftraege", a);
+  const lauf = laufend();
+  if (lauf[m] && lauf[m].auftrag !== auftrag) { lauf[m].auftrag = auftrag; DB.set("laufend", lauf); }
+}
 // Fertigware (Blatt WPD-005F1): was eingebaut ist und was fertig wurde – echte Werte,
 // getrennt von der Spulen-Berechnung (spulen), die nur vorhersagt
 function vorzuege()     { return DB.get("vorzuege", []); }       // Input: eingebaute Coils, aus_at = ausgebaut
@@ -459,10 +475,12 @@ function renderMaschineDetail() {
 /* Karte „Derzeit laufend" – kommt vom Abschluss einer Rüstung, kein Verlauf.
    Absichtlich kurz: nur der Draht und die drei Zahlen, die an der Maschine zählen. */
 function laufendHtml(m) {
-  const l = laufend()[m];
+  const l = laufend()[m], auftrag = maschinenAuftrag(m);
   if (!l) return `<div class="karte laufend leer-lauf" style="margin-top:12px">
     <div class="lauf-kopf">Derzeit laufend</div>
-    <div class="leer">Nichts gerüstet. Nach „Rüstung abschließen" im Bereich Rüsten steht hier, was läuft.</div></div>`;
+    ${auftrag ? `<div class="lauf-text">Auftrag ${esc(auftrag)}</div>` : ""}
+    <div class="leer">${auftrag ? "Noch nichts" : "Nichts"} gerüstet. Nach „Rüstung abschließen" im Bereich Rüsten steht hier, was läuft.</div>
+    ${berechnungZumAuftrag(auftrag)}</div>`;
   const werte = kennwerte(l.formular, l.ist).map(k =>
     `<div class="v-zeile"><span>${esc(k.label)}</span><span><b>${esc(k.wert)}</b>${k.einheit ? ` <span class="einheit">${esc(k.einheit)}</span>` : ""}${k.nurSoll ? ' <span class="meta">(Soll)</span>' : ""}</span></div>`).join("");
   const vergleichbar = ruestungenVon(l.rezept_id).length > 1;
@@ -470,11 +488,11 @@ function laufendHtml(m) {
     <div class="karte laufend" style="margin-top:12px">
       <div class="lauf-kopf">Derzeit laufend</div>
       <div class="lauf-draht">${esc(drahtName(l))}</div>
-      ${l.klartext || l.auftrag ? `<div class="lauf-text">${esc([l.klartext, l.auftrag ? "Auftrag " + l.auftrag : ""].filter(Boolean).join(" · "))}</div>` : ""}
+      ${l.klartext || auftrag ? `<div class="lauf-text">${esc([l.klartext, auftrag ? "Auftrag " + auftrag : ""].filter(Boolean).join(" · "))}</div>` : ""}
       <div class="meta">${esc(formularName(l.formular))} · gerüstet ${esc(l.seit || "")}${l.benutzer ? " · " + esc(l.benutzer) : ""}</div>
       ${werte ? `<div class="lauf-werte">${werte}</div>` : ""}
       ${l.geprueft ? `<div class="meta">zuletzt geprüft ${esc(l.geprueft)}${l.geprueft_von ? " · " + esc(l.geprueft_von) : ""}</div>` : ""}
-      ${berechnungZumAuftrag(l.auftrag)}
+      ${berechnungZumAuftrag(auftrag)}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
         <button class="btn btn-klein" data-kontrolle="${esc(m)}">Werte prüfen</button>
         ${vergleichbar ? `<button class="btn btn-klein btn-grau" data-rvergleich="${esc(l.rezept_id)}">Werte vergleichen</button>` : ""}
@@ -486,7 +504,7 @@ function laufendHtml(m) {
 /* ---------- Fertigware: Blatt WPD-005F1 „Eingesetzte Fertigware DZ" ----------
    Je Maschine und Auftrag: welche Vorzüge eingebaut sind (Input) und welche Spulen fertig wurden (Output).
    Die Abholung macht das Lager – sie bleibt in der App weg und steht im PDF nur als leere Spalte. */
-function fwAuftrag(m) { const l = laufend()[m]; return (l && l.auftrag) ? String(l.auftrag) : ""; }
+function fwAuftrag(m) { return maschinenAuftrag(m); }
 // Läuft die Maschine ohne Auftragsnummer, zählt nur der aktuelle Lauf seit dem Rüsten – sonst mischen sich alte Läufe hinein
 function fwAb(m, a) { const l = laufend()[m]; return (!a && l && !l.auftrag) ? zeitWert(l.seit) : 0; }
 function fwSpulen(m, a) {
@@ -765,11 +783,10 @@ function spulenListeHtml() {
   const gefiltert = spulen().slice().reverse().filter(e => !q ||
     [e.auftrag, e.benutzer, e.created_at].join(" ").toLowerCase().indexOf(q) !== -1);
   if (!gefiltert.length) return `<div class="leer">${spulenSuche ? "Keine Berechnung gefunden." : "Noch keine Berechnung gespeichert."}</div>`;
-  const lauf = laufend();
   return gefiltert.map(e => `
     <div class="eintrag">
       <div><b>${e.auftrag ? "Auftrag " + esc(e.auftrag) : "(ohne Auftragsnummer)"}</b>
-        ${e.auftrag ? Object.keys(lauf).filter(m => String(lauf[m].auftrag || "").trim() === String(e.auftrag).trim())
+        ${e.auftrag ? maschinen().filter(m => maschinenAuftrag(m).trim() === String(e.auftrag).trim())
           .map(m => `<span class="em-badge ok">läuft auf ${esc(m)}</span>`).join("") : ""}</div>
       <div style="font-size:.92rem">${e.anzahl_vz} VZ ${e.modus === "kleinster" ? "(vom kleinsten)" : "(zusammen)"} = <b>${fmt(e.gesamtmasse)} kg</b> · Faktor ${fmt(e.faktor, 0)} %
         → Endgewicht <b>${fmt(e.endgewicht)} kg</b> / <b>${fmt(e.endlaenge_m, 0)} m</b><br>
@@ -801,9 +818,8 @@ function renderSpulen() {
         <div class="label">Läuft auf Maschine</div>
         <select id="sp-maschine">
           <option value="">– keiner Maschine zuweisen –</option>
-          ${maschinen().map(m => { const l = lauf[m]; return l
-            ? `<option value="${esc(m)}">${esc(m)} · ${esc(drahtName(l))}${l.auftrag ? ` (bisher ${esc(l.auftrag)})` : ""}</option>`
-            : `<option value="${esc(m)}" disabled>${esc(m)} (nicht gerüstet)</option>`; }).join("")}
+          ${maschinen().map(m => { const l = lauf[m], a = maschinenAuftrag(m);
+            return `<option value="${esc(m)}">${esc(m)} · ${l ? esc(drahtName(l)) : "nicht gerüstet"}${a ? ` (bisher ${esc(a)})` : ""}</option>`; }).join("")}
         </select>
       </div>
       <div class="label">Metergewicht G (kg/km) – von der QS-Prüfkarte</div>
@@ -971,12 +987,12 @@ function speichereSpule() {
   const eg = gesamt * faktor / 100;
   const auftragsmenge = spVal("sp-auftragsmenge");
   const auftrag = document.getElementById("sp-auftrag").value.trim().slice(0, 50);
-  // Auftrag einer gerüsteten Maschine zuweisen – ein anderer Auftrag dort wird nur nach Rückfrage ersetzt
+  // Auftrag einer Maschine zuweisen, gerüstet oder nicht – ein anderer Auftrag dort wird nur nach Rückfrage ersetzt
   const mWahl = document.getElementById("sp-maschine");
   const m = auftrag && mWahl ? mWahl.value : "";
-  const lauf = laufend();
-  if (m && lauf[m] && lauf[m].auftrag && lauf[m].auftrag !== auftrag
-      && !confirm(`${m} läuft bisher auf Auftrag ${lauf[m].auftrag}.\n\nAuf ${auftrag} umstellen?`)) return;
+  const bisher = m ? maschinenAuftrag(m) : "";
+  if (bisher && bisher !== auftrag
+      && !confirm(`${m} läuft bisher auf Auftrag ${bisher}.\n\nAuf ${auftrag} umstellen?`)) return;
   const eintrag = {
     id: neueId(), auftrag: auftrag,
     metergewicht: G, vz_gewichte: vz, anzahl_vz: vz.length, gesamtmasse: gesamt,
@@ -989,7 +1005,7 @@ function speichereSpule() {
   let list = spulen();
   if (spEditId) { list = list.filter(s => s.id !== spEditId); spEditId = null; }  // Bearbeitung ersetzt den alten Eintrag
   list.push(eintrag); DB.set("spulen", list);
-  if (m && lauf[m] && lauf[m].auftrag !== auftrag) { lauf[m].auftrag = auftrag; DB.set("laufend", lauf); }
+  if (m && bisher !== auftrag) setzeMaschinenAuftrag(m, auftrag);
   flash("Berechnung gespeichert."); render(); window.scrollTo(0, 0);
 }
 
@@ -1007,8 +1023,7 @@ function editSpule(id) {
   spEditId = id;
   spModus = e.modus || "summe";
   document.getElementById("sp-auftrag").value = e.auftrag || "";
-  const lauf = laufend();
-  document.getElementById("sp-maschine").value = (e.auftrag && Object.keys(lauf).find(m => lauf[m].auftrag === e.auftrag)) || "";
+  document.getElementById("sp-maschine").value = (e.auftrag && maschinen().find(m => maschinenAuftrag(m) === e.auftrag)) || "";
   spMaschineZeigen();
   document.getElementById("sp-g").value = deStr(e.metergewicht);
   document.getElementById("sp-faktor").value = deStr(e.faktor);
@@ -1936,9 +1951,12 @@ function ruestAbschluss(id) {
   DB.set("rezepte", list);
   if (maschine) {
     // ersetzt, was vorher auf der Maschine lief – das hier ist der aktuelle Stand, kein Verlauf
+    // ein schon zugewiesener Auftrag bleibt – sonst der aus dem Muster
+    const auftrag = maschinenAuftrag(maschine) || r.beispiel_auftrag || "";
+    if (auftrag && auftrag !== maschinenAuftrag(maschine)) setzeMaschinenAuftrag(maschine, auftrag);
     const lauf = laufend();
     lauf[maschine] = { rezept_id: id, kuerzel: r.kuerzel, aufbau: r.aufbau, klartext: r.klartext,
-                       auftrag: r.beispiel_auftrag || "", formular: r.formular,
+                       auftrag: auftrag, formular: r.formular,
                        ist: ist, seit: zeit, benutzer: wer() };
     DB.set("laufend", lauf);
     // frisch gerüstet heißt: die Maschine produziert – alter Status (z. B. Drahtriss) gilt nicht mehr
@@ -2285,13 +2303,21 @@ function fuehreZusammen(d) {
     });
     DB.set("laufend", l);
   }
+  if (d.auftraege && typeof d.auftraege === "object") {
+    const at = auftraege();
+    Object.keys(d.auftraege).forEach(m => {
+      const fremd = d.auftraege[m];
+      if (fremd && typeof fremd === "object" && (!at[m] || zeitWert(fremd.seit) > zeitWert(at[m].seit))) { at[m] = fremd; akt++; }
+    });
+    DB.set("auftraege", at);
+  }
   if (d.linien) DB.set("linien", Object.assign(sauberLinien(d.linien), DB.get("linien", {}) || {}));  // eigene Einstellung gewinnt
   return { neu: neu, aktualisiert: akt };
 }
 
 function exportData() {
   const daten = { version: 1, exportiert: jetzt(), entries: entries(), todos: todos(), spulen: spulen(),
-                  rezepte: rezepte(), ruestungen: ruestungen(), maschinen: maschinen(), laufend: laufend(),
+                  rezepte: rezepte(), ruestungen: ruestungen(), maschinen: maschinen(), laufend: laufend(), auftraege: auftraege(),
                   notloesungen: notloesungen(), vorzuege: vorzuege(), fertigspulen: fertigspulen(), linien: DB.get("linien", {}) };
   const text = JSON.stringify(daten, null, 2);
   const name = "drahtzug-sicherung-" + jetzt().split(" ")[0].split(".").reverse().join("-") + ".json";
@@ -2322,6 +2348,7 @@ function importData(ersetzen) {
           .forEach(k => { if (Array.isArray(d[k])) DB.set(k, d[k]); });
         if (Array.isArray(d.maschinen)) DB.set("maschinen", sauberMaschinen(d.maschinen));
         if (d.laufend && typeof d.laufend === "object") DB.set("laufend", d.laufend);
+        if (d.auftraege && typeof d.auftraege === "object") DB.set("auftraege", d.auftraege);
         if (d.linien) DB.set("linien", sauberLinien(d.linien));
         flash("Sicherung eingelesen.");
       } else {
@@ -2667,6 +2694,7 @@ document.addEventListener("click", e => {
     if (!confirm("Maschine " + n + " entfernen?\n\nDie Kachel verschwindet. Bisherige Einträge und Aufgaben bleiben gespeichert.")) return;
     DB.set("maschinen", maschinen().filter(m => m !== n));
     const lauf = laufend(); if (lauf[n]) { delete lauf[n]; DB.set("laufend", lauf); }
+    const at = auftraege(); if (at[n]) { delete at[n]; DB.set("auftraege", at); }
     flash("Maschine entfernt."); render();
   }
   else if (el.dataset.pkWeg) {
@@ -2709,6 +2737,8 @@ document.addEventListener("click", e => {
   else if (el.dataset.laufendEnde) {
     const n = el.dataset.laufendEnde;
     if (!confirm("Läuft auf " + n + " nicht mehr?\n\nDie Rüstung bleibt im Rüst-Verlauf erhalten.")) return;
+    const auftrag = maschinenAuftrag(n);  // der Auftrag bleibt an der Maschine
+    if (auftrag && !auftraege()[n]) setzeMaschinenAuftrag(n, auftrag);
     const lauf = laufend(); delete lauf[n]; DB.set("laufend", lauf);
     flash("Eintrag entfernt."); render();
   }
