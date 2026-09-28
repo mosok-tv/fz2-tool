@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "4.17";
+const APP_VERSION = "4.18";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -2886,6 +2886,10 @@ function delSpule(id) {
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "4.18": [
+    "Spulen: Auftrag jeder Maschine zuweisen, auch wenn sie nicht gerüstet ist",
+    "Der Auftrag bleibt an der Maschine – beim Rüsten und nach „Läuft nicht mehr“"
+  ],
   "4.17": [
     "Neues Muster startet gleich mit Schritt 1 – ähnliches Muster übernehmen geht über den Knopf oben",
     "Maschine wird aus der Liste gewählt, das Formular von zuletzt ist dann schon eingestellt",
