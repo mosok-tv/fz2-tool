@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "4.19";
+const APP_VERSION = "4.20";
 const REPORT_MAIL = "tigga232332@gmail.com";   // Sammeladresse für Wochenberichte
 const WOCHE_MS = 7 * 24 * 3600 * 1000;
 
@@ -327,7 +327,7 @@ window.addEventListener("unhandledrejection", e => logFehler("Programmfehler", (
 
 /* ---------- Router ---------- */
 const state = { view: "maschinen", maschine: null, overlay: null, rezept: null, rezeptForm: null, verlauf: null, vergleich: null, emDetail: null, rvergleich: null, abweichung: null, kontrolle: null, fwForm: null };
-let spModus = "summe";  // Berechnungsart der Vorzüge: "summe" | "kleinster"
+let spModus = "summe";  // Berechnungsart der Vorzüge: "summe" | "kleinster" | "bedarf"
 let ruestSuche = "";    // Suchbegriff im Rüsten-Bereich
 let emSuche = "";       // Suchbegriff im Erstmuster-Bereich
 let spulenSuche = "";   // Suchbegriff für gespeicherte Berechnungen
@@ -794,7 +794,7 @@ function spulenListeHtml() {
       <div><b>${e.auftrag ? "Auftrag " + esc(e.auftrag) : "(ohne Auftragsnummer)"}</b>
         ${e.auftrag ? maschinen().filter(m => maschinenAuftrag(m).trim() === String(e.auftrag).trim())
           .map(m => `<span class="em-badge ok">läuft auf ${esc(m)}</span>`).join("") : ""}</div>
-      <div style="font-size:.92rem">${e.anzahl_vz} VZ ${e.modus === "kleinster" ? "(vom kleinsten)" : "(zusammen)"} = <b>${fmt(e.gesamtmasse)} kg</b> · Faktor ${fmt(e.faktor, 0)} %
+      <div style="font-size:.92rem">${e.anzahl_vz} VZ ${e.modus === "kleinster" ? "(vom kleinsten)" : e.modus === "bedarf" ? "(nur benötigte Menge)" : "(zusammen)"} = <b>${fmt(e.gesamtmasse)} kg</b> · Faktor ${fmt(e.faktor, 0)} %
         → Endgewicht <b>${fmt(e.endgewicht)} kg</b> / <b>${fmt(e.endlaenge_m, 0)} m</b><br>
         ${e.anzahl_spulen} Fertigspulen → je <b>${fmt(e.gewicht_je_spule)} kg</b> / <b>${fmt(e.laenge_je_spule, 0)} m</b>
         ${e.geschwindigkeit ? "<br>Bei " + fmt(e.geschwindigkeit, 1) + " m/s → Laufzeit gesamt <b>" + hm(e.endlaenge_m / e.geschwindigkeit) + "</b> · je Spule <b>" + hm(e.laenge_je_spule / e.geschwindigkeit) + "</b>" : ""}
@@ -860,9 +860,15 @@ function renderSpulen() {
     </div>
     <div class="karte">
       <h2>Berechnungsart der Vorzüge</h2>
-      <div class="modus">
+      <div class="modus" style="grid-template-columns:repeat(3,1fr)">
         <button type="button" data-modus="summe" class="${spModus === 'summe' ? 'aktiv' : ''}">Alle zusammen<small>Summe aller Vorzüge</small></button>
         <button type="button" data-modus="kleinster" class="${spModus === 'kleinster' ? 'aktiv' : ''}">Vom kleinsten<small>kleinster × Anzahl</small></button>
+        <button type="button" data-modus="bedarf" class="${spModus === 'bedarf' ? 'aktiv' : ''}">Nur benötigte Menge<small>Spulen × Gewicht</small></button>
+      </div>
+      <div id="sp-bedarf-feld" ${spModus === 'bedarf' ? '' : 'hidden'} style="margin-top:10px">
+        <div class="label">Gewicht je Fertigspule (kg) <span style="color:var(--grau)">(Anzahl Fertigspulen unten)</span></div>
+        <div class="schmal"><input type="text" id="sp-spulenkg" class="num" inputmode="decimal" placeholder="z. B. 51,59"></div>
+        <div id="sp-bedarf" style="margin-top:8px"></div>
       </div>
       <div class="vergleich">
         <div id="v-summe">Alle zusammen<span class="gross" id="w-summe">0</span></div>
@@ -878,15 +884,17 @@ function renderSpulen() {
       </div>
       <div class="label" style="margin-top:10px">Geschwindigkeit (m/s) <span style="color:var(--grau)">(optional – für Laufzeit)</span></div>
       <div class="schmal"><input type="text" id="sp-v" class="num" inputmode="decimal" placeholder="z. B. 20"></div>
+      <div id="sp-auftragsmenge-feld" ${spModus === 'bedarf' ? 'hidden' : ''}>
       <div class="label" style="margin-top:10px">Auftragsmenge (kg) <span style="color:var(--grau)">(optional – prüft, ob der Vorzug reicht)</span></div>
       <div class="schmal"><input type="text" id="sp-auftragsmenge" class="num" inputmode="decimal" placeholder="z. B. 348"></div>
+      </div>
     </div>
     <div class="karte" id="sp-ampel-karte" style="display:none">
       <div id="sp-ampel"></div>
     </div>
     <div class="karte erg">
       <h2>Ergebnis</h2>
-      <div class="zeile haupt"><span>Endgewicht (× Faktor)</span><span><span class="w" id="sp-eg">0</span><span class="einheit">kg</span></span></div>
+      <div class="zeile haupt"><span id="sp-eg-label">Endgewicht (× Faktor)</span><span><span class="w" id="sp-eg">0</span><span class="einheit">kg</span></span></div>
       <div class="zeile"><span>Endlänge gesamt</span><span><span class="w" id="sp-el">0</span><span class="einheit">m</span></span></div>
       <div class="zeile"><span>Gewicht je Fertigspule</span><span><span class="w" id="sp-skg">0</span><span class="einheit">kg</span></span></div>
       <div class="zeile"><span>Länge je Fertigspule</span><span><span class="w" id="sp-sm">0</span><span class="einheit">m</span></span></div>
@@ -936,11 +944,17 @@ function spRechne() {
   document.getElementById("w-kleinster").textContent = fmt(massKleinster);
   document.getElementById("v-summe").classList.toggle("benutzt", spModus === "summe");
   document.getElementById("v-kleinster").classList.toggle("benutzt", spModus === "kleinster");
+  // „Nur benötigte Menge": Fertigspulen × Gewicht, Vorzüge vom größten an aufbrauchen
+  const bedarf = spModus === "bedarf" ? spBedarf(vzWerte, nSpulen, spVal("sp-spulenkg"), faktor) : null;
   document.getElementById("modus-hinweis").textContent = spModus === "kleinster"
     ? `Verwendet: kleinster Vorzug (${fmt(kleinster)} kg) × ${aktiv} = ${fmt(massKleinster)} kg. Rest bleibt übrig: ${fmt(summe - massKleinster)} kg.`
+    : bedarf ? "Verwendet: nur so viele Vorzüge, wie für die Fertigspulen nötig sind – der größte zuerst."
     : `Verwendet: Summe aller ${aktiv} Vorzüge = ${fmt(summe)} kg.`;
+  document.getElementById("sp-eg-label").textContent = bedarf ? "Benötigt (Spulen × Gewicht)" : "Endgewicht (× Faktor)";
+  const bedarfBox = document.getElementById("sp-bedarf");
+  if (bedarfBox) bedarfBox.innerHTML = bedarf ? spBedarfHtml(bedarf, aktiv, G, faktor) : "";
   const gesamt = spModus === "kleinster" ? massKleinster : summe;
-  const eg = gesamt * (faktor / 100), el = G > 0 ? eg / G * 1000 : 0;
+  const eg = bedarf ? bedarf.fertig : gesamt * (faktor / 100), el = G > 0 ? eg / G * 1000 : 0;
   document.getElementById("sp-eg").textContent = fmt(eg);
   document.getElementById("sp-el").textContent = fmt(el, 0);
   const sKg = nSpulen > 0 ? eg / nSpulen : 0, sM = (nSpulen > 0 && G > 0) ? sKg / G * 1000 : 0;
@@ -960,7 +974,17 @@ function spRechne() {
   const karte = document.getElementById("sp-ampel-karte");
   const ampel = document.getElementById("sp-ampel");
   if (karte && ampel) {
-    if (auftragsmenge > 0 && eg > 0) {
+    if (bedarf && bedarf.roh > 0 && aktiv) {
+      // Bei „Nur benötigte Menge" prüft die Ampel, ob die Vorzüge für den Bedarf reichen
+      const reicht = bedarf.fehlt <= 0;
+      ampel.innerHTML = `
+        <div class="ampel ${reicht ? "gut" : "schlecht"}">
+          <div class="ampel-titel">${reicht ? "✓ Vorzüge reichen aus" : "✕ Vorzüge reichen NICHT"}</div>
+          <div class="ampel-zahl">${reicht ? `${bedarf.anzahl} von ${aktiv} Vorzügen genügen` : `Es fehlen ${fmt(bedarf.fehlt)} kg${G > 0 ? " ≈ " + fmt(bedarf.fehlt / G * 1000, 0) + " m" : ""}`}</div>
+          <div class="ampel-zeile">Benötigt <b>${fmt(bedarf.roh)} kg</b> Vorzug · vorhanden <b>${fmt(summe)} kg</b></div>
+        </div>`;
+      karte.style.display = "";
+    } else if (!bedarf && auftragsmenge > 0 && eg > 0) {
       const diff = eg - auftragsmenge;
       const reicht = diff >= 0;
       ampel.innerHTML = `
@@ -976,6 +1000,38 @@ function spRechne() {
     }
   }
 }
+/* Bedarf: Fertigspulen × Gewicht. Faktor wie oben (fertig = Vorzug × Faktor), also Vorzug-Bedarf = fertig / Faktor.
+   Die Vorzüge (schon ohne Galvanik-Abzug) werden vom größten an genommen, bis der Bedarf gedeckt ist. */
+function spBedarf(vzWerte, nSpulen, spulenKg, faktor) {
+  const fertig = (nSpulen > 0 && spulenKg > 0) ? nSpulen * spulenKg : 0;
+  const roh = fertig / (faktor / 100);
+  const sortiert = vzWerte.slice().sort((a, b) => b - a);
+  let genutzt = 0, anzahl = 0;
+  while (roh > 0 && anzahl < sortiert.length && genutzt < roh - 1e-9) genutzt += sortiert[anzahl++];
+  const ungenutzt = sortiert.slice(anzahl);
+  return {
+    fertig, roh, anzahl, genutzt, rest: Math.max(0, genutzt - roh), fehlt: Math.max(0, roh - genutzt),
+    ungenutzt: ungenutzt.length, ungenutztKg: ungenutzt.reduce((a, b) => a + b, 0),
+  };
+}
+function spBedarfHtml(b, aktiv, G, faktor) {
+  if (!(b.roh > 0)) return `<div class="hinweis">Anzahl Fertigspulen (unten) und Gewicht je Spule eintragen.</div>`;
+  if (!aktiv) return `<div class="hinweis">Oben die Vorzug-Gewichte eintragen.</div>`;
+  const m = kg => G > 0 ? ` ≈ ${fmt(kg / G * 1000, 0)} m` : "";
+  return `
+    ${faktor !== 100 ? `<div class="zeile"><span>Vorzug-Bedarf (÷ Faktor ${fmt(faktor, 0)} %)</span><span><span class="w">${fmt(b.roh)}</span><span class="einheit">kg</span></span></div>` : ""}
+    <div class="zeile"><span>Benötigte Vorzüge</span><span><span class="w" id="sp-bedarf-vz">${b.anzahl} von ${aktiv}</span><span class="einheit">(${fmt(b.genutzt)} kg)</span></span></div>
+    <div class="zeile"><span>Rest danach</span><span><span class="w" id="sp-bedarf-rest">${fmt(b.rest)}</span><span class="einheit">kg${m(b.rest)}</span></span></div>
+    <div class="zeile" style="border-bottom:none"><span>Ungenutzte VZ</span><span><span class="w" id="sp-bedarf-frei">${b.ungenutzt}</span><span class="einheit">(${fmt(b.ungenutztKg)} kg)</span></span></div>
+    ${b.fehlt > 0 ? `<div class="hinweis" id="sp-bedarf-fehlt" style="color:var(--red);font-weight:600">Alle Vorzüge zusammen reichen nicht: es fehlen ${fmt(b.fehlt)} kg${m(b.fehlt)}.</div>` : ""}`;
+}
+/* Berechnungsart umschalten: Knöpfe markieren und die passenden Felder zeigen */
+function spModusSetzen(modus) {
+  spModus = modus || "summe";
+  document.querySelectorAll("[data-modus]").forEach(b => b.classList.toggle("aktiv", b.dataset.modus === spModus));
+  const bf = document.getElementById("sp-bedarf-feld"); if (bf) bf.hidden = spModus !== "bedarf";
+  const af = document.getElementById("sp-auftragsmenge-feld"); if (af) af.hidden = spModus === "bedarf";
+}
 function gErmittelt() { const gKg = spVal("g-kg"), gM = spVal("g-m"); return (gKg > 0 && gM > 0) ? gKg / (gM / 1000) : 0; }
 
 function speichereSpule() {
@@ -987,10 +1043,13 @@ function speichereSpule() {
   if (G <= 0) return flash("Metergewicht (kg/km) fehlt.");
   if (!vz.length) return flash("Mindestens ein Vorzug-Gewicht angeben.");
   if (nSpulen < 1) return flash("Anzahl Fertigspulen muss mindestens 1 sein.");
+  const spulenKg = spVal("sp-spulenkg");
+  if (spModus === "bedarf" && spulenKg <= 0) return flash("Gewicht je Fertigspule fehlt.");
   const vzNetto = vz.map(w => Math.max(0, w - spAbzug));   // Galvanik-Abzug je Vorzug
   const summe = vzNetto.reduce((a, b) => a + b, 0);
-  const gesamt = spModus === "kleinster" ? Math.min(...vzNetto) * vzNetto.length : summe;
-  const eg = gesamt * faktor / 100;
+  const bedarf = spModus === "bedarf" ? spBedarf(vzNetto, nSpulen, spulenKg, faktor) : null;
+  const gesamt = bedarf ? bedarf.roh : spModus === "kleinster" ? Math.min(...vzNetto) * vzNetto.length : summe;
+  const eg = bedarf ? bedarf.fertig : gesamt * faktor / 100;
   const auftragsmenge = spVal("sp-auftragsmenge");
   const auftrag = document.getElementById("sp-auftrag").value.trim().slice(0, 50);
   // Auftrag einer Maschine zuweisen, gerüstet oder nicht – ein anderer Auftrag dort wird nur nach Rückfrage ersetzt
@@ -1008,6 +1067,10 @@ function speichereSpule() {
     gewicht_je_spule: eg / nSpulen, laenge_je_spule: eg / nSpulen / G * 1000,
     geschwindigkeit: v > 0 ? v : null, benutzer: wer(), created_at: jetzt(),
   };
+  if (bedarf) Object.assign(eintrag, {
+    spulen_kg: spulenKg, vz_benoetigt: bedarf.anzahl, vz_genutzt_kg: bedarf.genutzt,
+    rest_kg: bedarf.rest, fehlt_kg: bedarf.fehlt,
+  });
   let list = spulen();
   if (spEditId) { list = list.filter(s => s.id !== spEditId); spEditId = null; }  // Bearbeitung ersetzt den alten Eintrag
   list.push(eintrag); DB.set("spulen", list);
@@ -1027,7 +1090,6 @@ function editSpule(id) {
   const e = spulen().find(s => s.id === id);
   if (!e) return;
   spEditId = id;
-  spModus = e.modus || "summe";
   document.getElementById("sp-auftrag").value = e.auftrag || "";
   document.getElementById("sp-maschine").value = (e.auftrag && maschinen().find(m => maschinenAuftrag(m) === e.auftrag)) || "";
   spMaschineZeigen();
@@ -1036,11 +1098,12 @@ function editSpule(id) {
   document.getElementById("sp-nspulen").value = String(e.anzahl_spulen);
   document.getElementById("sp-v").value = e.geschwindigkeit ? deStr(e.geschwindigkeit) : "";
   document.getElementById("sp-auftragsmenge").value = e.auftragsmenge ? deStr(e.auftragsmenge) : "";
+  document.getElementById("sp-spulenkg").value = e.spulen_kg ? deStr(e.spulen_kg) : "";
   spAbzug = e.abzug_je_vz || 0;
   document.querySelectorAll("[data-abzug]").forEach(b => b.classList.toggle("aktiv", parseFloat(b.dataset.abzug) === spAbzug));
   const felder = document.querySelectorAll(".vz");
   felder.forEach((el, i) => el.value = (e.vz_gewichte && e.vz_gewichte[i] != null) ? deStr(e.vz_gewichte[i]) : "");
-  document.querySelectorAll(".modus button").forEach(b => b.classList.toggle("aktiv", b.dataset.modus === spModus));
+  spModusSetzen(e.modus);
   spRechne();
   window.scrollTo(0, 0);
   flash("Werte geladen – ändern und erneut speichern.");
@@ -2582,8 +2645,7 @@ document.addEventListener("click", e => {
     spRechne();
   }
   else if (el.dataset.modus) {
-    spModus = el.dataset.modus;
-    document.querySelectorAll(".modus button").forEach(b => b.classList.toggle("aktiv", b === el));
+    spModusSetzen(el.dataset.modus);
     spRechne();
   }
   else if (el.dataset.saveSpule) speichereSpule();
@@ -2898,6 +2960,9 @@ function delSpule(id) {
 
 /* ---------- Was ist neu (Änderungen je Version) ---------- */
 const CHANGELOG = {
+  "4.20": [
+    "Spulen: neue Berechnungsart „Nur benötigte Menge“ (Spulen × Gewicht) – nimmt die Vorzüge vom größten an, bis der Bedarf gedeckt ist, und zeigt Rest und ungenutzte Vorzüge"
+  ],
   "4.19": [
     "Maschine: Knopf „Auftrag fertig“ – löst den Auftrag, Fertigware und PDF bleiben unter „Frühere Aufträge“"
   ],

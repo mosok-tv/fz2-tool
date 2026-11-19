@@ -123,6 +123,38 @@ module.exports = async function () {
   d.querySelector("[data-save-spule]").click();
   check("Bearbeiten erzeugt keine Dublette", S("spulen").length === 1);
 
+  // Berechnungsart „Nur benötigte Menge" (Spulen × Gewicht, VZ vom größten an)
+  d.querySelectorAll(".vz").forEach(el => setVal(el, ""));
+  for (let i = 0; i < 7; i++) setVal(d.querySelectorAll(".vz")[i], "150");
+  setVal(d.getElementById("sp-g"), "0,5552");
+  setVal(d.getElementById("sp-faktor"), "100");
+  setVal(d.getElementById("sp-nspulen"), "4");
+  d.querySelector('[data-abzug="5"]').click();
+  d.querySelector('[data-modus="bedarf"]').click();
+  check("Modus-Wechsel lässt Abzug-Markierung stehen", d.querySelector('[data-abzug="5"]').classList.contains("aktiv"));
+  d.querySelector('[data-abzug="0"]').click();
+  check("Bedarf: Gewichtsfeld sichtbar, Auftragsmenge ausgeblendet", !d.getElementById("sp-bedarf-feld").hidden && d.getElementById("sp-auftragsmenge-feld").hidden);
+  setVal(d.getElementById("sp-spulenkg"), "51,59");
+  check("Bedarf: 92.921 m je Spule (51,59 / 0,5552 × 1000 = 92.921,47)", d.getElementById("sp-sm").textContent === "92.921");
+  check("Bedarf: 206,36 kg gesamt", d.getElementById("sp-eg").textContent === "206,36");
+  check("Bedarf: 371.686 m gesamt", d.getElementById("sp-el").textContent === "371.686");
+  const bed = d.getElementById("sp-bedarf");
+  check("Bedarf: 2 von 7 VZ (300,00 kg)", d.getElementById("sp-bedarf-vz").textContent === "2 von 7" && bed.innerHTML.indexOf("300,00 kg") !== -1);
+  check("Bedarf: Rest 93,64 kg ≈ 168.660 m", d.getElementById("sp-bedarf-rest").textContent === "93,64" && bed.innerHTML.indexOf("168.660 m") !== -1);
+  check("Bedarf: 5 ungenutzte VZ", d.getElementById("sp-bedarf-frei").textContent === "5");
+  check("Bedarf: Ampel – Vorzüge reichen", d.getElementById("sp-ampel").innerHTML.indexOf("Vorzüge reichen aus") !== -1);
+  setVal(d.getElementById("sp-nspulen"), "25");
+  check("Bedarf: zu wenig VZ – rote Fehlmenge 239,75 kg", d.getElementById("sp-bedarf-fehlt") && d.getElementById("sp-bedarf-fehlt").textContent.indexOf("239,75 kg") !== -1);
+  check("Bedarf: Ampel – reichen NICHT", d.getElementById("sp-ampel").innerHTML.indexOf("reichen NICHT") !== -1);
+  setVal(d.getElementById("sp-nspulen"), "4");
+  setVal(d.getElementById("sp-auftrag"), "20000");
+  d.querySelector("[data-save-spule]").click();
+  const gesp = S("spulen").find(e => e.auftrag === "20000");
+  check("Bedarf: gespeichert mit Modus und Spulengewicht", gesp && gesp.modus === "bedarf" && gesp.spulen_kg === 51.59 && gesp.vz_benoetigt === 2);
+  check("Liste zeigt „nur benötigte Menge“", d.getElementById("spulen-liste").innerHTML.indexOf("(nur benötigte Menge)") !== -1);
+  d.querySelector('[data-modus="summe"]').click();
+  check("Zurück auf Summe: Auftragsmenge wieder sichtbar", d.getElementById("sp-bedarf-feld").hidden && !d.getElementById("sp-auftragsmenge-feld").hidden);
+
   // --- Erstmuster: Assistent; Rüsten: Checkliste ---
   tab("erstmuster");
   d.querySelector("[data-rezept-neu]").click();
